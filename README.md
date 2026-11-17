@@ -2,7 +2,7 @@
 
 Tools for reading, editing, checking and rendering the Docmosis `.docx` templates in [hmcts/rdo-docmosis](https://github.com/hmcts/rdo-docmosis):
 
-- `bin/docmosis`: a CLI that lists a template's fields and blocks, finds broken conditionals and repeats, unpacks a template to XML and packs it back, diffs two versions, and renders a template file on the hosted dtsse-doc-render in AAT, a stored template on AAT's Docmosis, or a template on a hmcts/docmosis preview PR.
+- `bin/docmosis`: a CLI that lists a template's fields and blocks, finds broken conditionals and repeats, unpacks a template to XML and packs it back, diffs two versions, and renders a template file on the hosted dtsse-doc-render in AAT or a stored template on AAT's Docmosis.
 - `lib/docx.mjs`: the template library the CLI uses, importable as an ES module.
 - `vscode/`: HMCTS Template Preview, a VS Code extension that builds an input form from a template and renders it beside the form through the hosted dtsse-doc-render. See [vscode/README.md](vscode/README.md).
 
@@ -10,7 +10,7 @@ The detailed how-to is [Edit a Docmosis template](https://github.com/hmcts/cft-w
 
 ## Install
 
-The CLI needs bash (3.2 or later) and Node 20 or later; rendering also needs `jq` and `curl`, the VPN for AAT, and `kubectl` for the preview PR options:
+The CLI needs bash (3.2 or later) and Node 20 or later; rendering also needs `jq` and `curl`, and the VPN for AAT:
 
 ```sh
 git clone git@github.com:hmcts/dtsse-docmosis-tools.git
@@ -39,13 +39,11 @@ Template files (no network):
   unpack <file.docx> <dir>    extract a template for editing
   pack <dir> <file.docx>      zip an unpacked folder back into a .docx
 
-Docmosis instance (AAT by default, or --preview <n>, --url, --port-forward):
+Docmosis instance (AAT by default, or --url):
   status                      check the instance answers
   structure <template-name>   the instance's view of a stored template's fields
   sample <template-name>      the instance's placeholder data for a stored template
   render <template-name> <data.json> [--out file] [--dev] [--format pdf|docx]
-  put <ns>/<pod-or-release> <file.docx>
-                              copy a template into a hmcts/docmosis preview PR pod
 
 Hosted render service (dtsse-doc-render in AAT, VPN only):
   render-file <file.docx> <data.json> [--out file] [--format F] [--dev]
@@ -69,9 +67,9 @@ A failed render prints the service's message and exits 1. If the host can't be r
 
 ### Limits
 
-- It renders the subset of the template language in dtsse-doc-render's `docs/template-language.md`, which was checked against Docmosis. A render there is not proof that a template works in Docmosis: the hmcts/docmosis PR check stays the gate. For Docmosis itself, `put` the template into your PR's preview pod and `render --preview <n>`.
+- It renders the subset of the template language in dtsse-doc-render's `docs/template-language.md`, which was checked against Docmosis. A render there is not proof that a template works in Docmosis. Templates are changed in [hmcts/rdo-docmosis](https://github.com/hmcts/rdo-docmosis) (`Templates/Base`, plus a folder per environment), whose manually triggered Template Validation pipeline renders every template in a local Docmosis container; after the change deploys, render the template on AAT's Docmosis with `render <template-name>`. Those two are the gate.
 - The request body is limited to 50 MB.
-- `render-file` only needs the service, always uses it (the `--url`, `--preview`, `--port-forward`, `--pod-key`, `--vault`, `--secret` and `--context` options are refused), and checks that the output is a real document before reporting success; `structure` and `sample` are Docmosis calls and the service doesn't implement them.
+- `render-file` only needs the service, always uses it (the `--url`, `--vault` and `--secret` options are refused), and checks that the output is a real document before reporting success; `structure` and `sample` are Docmosis calls and the service doesn't implement them.
 
 ## Tests
 
