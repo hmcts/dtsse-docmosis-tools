@@ -30,6 +30,30 @@ export async function run(): Promise<void> {
   await extension.activate();
   assert.ok((await vscode.commands.getCommands(true)).includes('hmctsTemplatePreview.preview'));
 
+  if (process.platform !== 'win32') {
+    // A terminal opened after activation finds the stub in the extension's stable storage directory,
+    // and the stub reaches the bundled launcher on both the system Node and VS Code's own.
+    const found = join(workspace, 'terminal-which.txt');
+    const script = [
+      `echo "WHICH=$(command -v docmosis)" > '${found}'`,
+      `docmosis --help 2>&1 | head -n 1 | sed 's/^/SYSTEM=/' >> '${found}'`,
+      `DOCMOSIS_FORCE_VSCODE_NODE=1 docmosis --help 2>&1 | head -n 1 | sed 's/^/EDITOR=/' >> '${found}'`,
+      `echo DONE >> '${found}'`,
+    ].join('; ');
+    const terminal = vscode.window.createTerminal({ name: 'docmosis-check', shellPath: '/bin/sh', shellArgs: ['-c', script] });
+    await until(() => existsSync(found) && readFileSync(found, 'utf8').includes('DONE'), 'the terminal to run docmosis');
+    terminal.dispose();
+    const lines = readFileSync(found, 'utf8').split('\n');
+    const marker = (name: string) => lines.find((line) => line.startsWith(`${name}=`))?.slice(name.length + 1);
+    assert.ok(
+      marker('WHICH')?.endsWith(join('globalStorage', 'hmcts.hmcts-template-preview', 'bin', 'docmosis')),
+      `docmosis resolves to the stub in global storage: ${marker('WHICH')}`,
+    );
+    assert.match(marker('SYSTEM') ?? '', /^usage: docmosis <command>/, 'the system Node runs the launcher');
+    assert.match(marker('EDITOR') ?? '', /^usage: docmosis <command>/, "VS Code's Node runs the launcher");
+    console.log('integration: terminal command passed');
+  }
+
   const docx = join(workspace, 'Synthetic.docx');
   writeFileSync(
     docx,

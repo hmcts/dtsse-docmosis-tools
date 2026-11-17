@@ -8,6 +8,12 @@ Tools for reading, editing, checking and rendering Docmosis `.docx` template fil
 
 ## Install
 
+### Inside VS Code
+
+Install the HMCTS Template Preview extension (see [vscode/README.md](vscode/README.md)). It puts the `docmosis` command on the PATH of VS Code's integrated terminals, with nothing else to install. The command uses your Node when that is 24 or later and VS Code's own Node otherwise. It appears in terminals opened after the extension activates, so reopen any terminal that was already open, and the `hmctsTemplatePreview.terminalCommand` setting turns it off.
+
+### Outside VS Code
+
 The CLI needs Node 24 or later; rendering also needs the VPN. It is published to the HMCTS Azure Artifacts `hmcts-lib` feed as `@hmcts-cft/docmosis-tools`.
 
 ```sh
@@ -48,7 +54,7 @@ try {
 
 Node's `fetch` ignores `HTTPS_PROXY` and `NO_PROXY` and the system certificate store unless Node starts with `NODE_USE_ENV_PROXY=1` and `--use-system-ca`. The `docmosis` command always starts that way (`bin/docmosis` sets them, and `bin/docmosis.mjs` restarts Node with them when they are missing); a program that calls the library has to set them itself.
 
-The extension bundles the library, so it works in any workspace. Download `hmcts-template-preview.vsix` from the [latest release](https://github.com/hmcts/dtsse-docmosis-tools/releases/latest) and install it:
+The extension bundles the library and the CLI, so it works in any workspace. Download `hmcts-template-preview.vsix` from the [latest release](https://github.com/hmcts/dtsse-docmosis-tools/releases/latest) and install it:
 
 ```sh
 curl -fsSLO https://github.com/hmcts/dtsse-docmosis-tools/releases/latest/download/hmcts-template-preview.vsix
