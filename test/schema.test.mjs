@@ -282,6 +282,14 @@ test('a bare $this at the top level is a whole scope, not an index', () => {
     assert.deepEqual(warnings, ['"$this" names a whole scope, not a field; ignored.']);
 });
 
+test('an index on a scope is an index, not a whole scope', () => {
+    const { warnings } = inferSchema([rep('tags', [field('$parent[0]')]), field('$root')]);
+    assert.deepEqual(warnings, [
+        '"$parent[0]" in "rs_tags" indexes something that is not a list; ignored.',
+        '"$root" names a whole scope, not a field; ignored.',
+    ]);
+});
+
 test('a repeat over $parent at the top level still lists the names inside it', () => {
     const { warnings } = inferSchema([{ type: 'repeat', text: 'rs_$parent.list', dataRefs: ['$parent.list'], children: [field('x')] }]);
     assert.deepEqual(warnings, ['`$parent.list` is outside any repeat, so it is always empty.', unplacedWarning('rs_$parent.list', 'x')]);
