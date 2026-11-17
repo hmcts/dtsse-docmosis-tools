@@ -29,6 +29,8 @@ export interface RenderOptions {
     url?: string;
     /** The template's file name in the request when template is bytes. */
     filename?: string;
+    /** Aborting it cancels the request, which then rejects with the signal's reason. */
+    signal?: AbortSignal;
     fetchImpl?: typeof fetch;
 }
 

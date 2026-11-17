@@ -6,6 +6,9 @@ on:
     paths:
       - bin/**
       - lib/**
+      - index.mjs
+      - index.d.ts
+      - package.json
       - vscode/**
 
 permissions:

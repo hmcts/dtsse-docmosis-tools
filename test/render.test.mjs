@@ -114,6 +114,36 @@ test('DNS and connection failures are RenderUnreachable', async () => {
     );
 });
 
+test('a signal is forwarded to the request and its abort is not reported as unreachable', async () => {
+    const controller = new AbortController();
+    let init;
+    const fetchImpl = (url, i) => {
+        init = i;
+        return new Promise((_, reject) => i.signal.addEventListener('abort', () => reject(i.signal.reason)));
+    };
+    const pending = renderFile({ template: DOCX, data: {}, signal: controller.signal, fetchImpl });
+    assert.equal(init.signal.aborted, false);
+    controller.abort();
+    await assert.rejects(pending, (e) => e.name === 'AbortError' && !(e instanceof RenderUnreachable));
+    assert.equal(init.signal.aborted, true);
+});
+
+test('DOC_RENDER_URL is read on each call', async () => {
+    const urls = [];
+    const fetchImpl = async (url) => (urls.push(url), reply(BODIES.pdf[0], 200, 'application/pdf'));
+    const saved = process.env.DOC_RENDER_URL;
+    try {
+        process.env.DOC_RENDER_URL = 'http://one';
+        await renderFile({ template: DOCX, data: {}, fetchImpl });
+        process.env.DOC_RENDER_URL = 'http://two';
+        await renderFile({ template: DOCX, data: {}, fetchImpl });
+    } finally {
+        if (saved === undefined) delete process.env.DOC_RENDER_URL;
+        else process.env.DOC_RENDER_URL = saved;
+    }
+    assert.deepEqual(urls, ['http://one/api/render', 'http://two/api/render']);
+});
+
 test('an unknown format is rejected before any request', async () => {
     await assert.rejects(renderFile({ template: DOCX, data: {}, format: 'rtf', fetchImpl: () => assert.fail('no request') }), TypeError);
 });

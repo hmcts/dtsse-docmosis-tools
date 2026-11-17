@@ -52,7 +52,8 @@ export async function renderPdf(options: RenderOptions): Promise<RenderResult> {
       data,
       format: 'pdf',
       devMode: dev,
-      fetchImpl: (input, init) => send(input, { ...init, ...(signal ? { signal } : {}) }),
+      signal,
+      fetchImpl: send,
     }));
   } catch (error) {
     if (signal?.aborted || (error as Error).name === 'AbortError') throw new RenderAbortedError('Render cancelled');

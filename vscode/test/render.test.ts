@@ -69,7 +69,7 @@ describe('renderPdf', () => {
   it('asks whether the VPN is connected when the service cannot be reached', async () => {
     const { dir, docx } = await template();
     const fetchImpl = (async () => {
-      throw new TypeError('fetch failed');
+      throw new TypeError('fetch failed', { cause: Object.assign(new Error('ENOTFOUND'), { code: 'ENOTFOUND' }) });
     }) as unknown as typeof fetch;
     await expect(renderPdf({ docx, data: {}, dev: false, outDir: join(dir, 'out'), fetchImpl })).rejects.toThrow(
       "Can't reach dtsse-doc-render: is the VPN connected?",

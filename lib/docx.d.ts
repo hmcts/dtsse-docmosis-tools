@@ -50,8 +50,9 @@ export interface TreeNode {
     type: 'field' | 'condition' | 'repeat' | 'else' | 'comment';
     text: string;
     dataRefs: string[];
-    children?: TreeNode[];
-    location?: unknown;
+    children: TreeNode[];
+    row?: boolean;
+    location: { part: string; paragraph: number; cells: { table: number; row: number; cell: number }[]; label: string };
     [key: string]: unknown;
 }
 

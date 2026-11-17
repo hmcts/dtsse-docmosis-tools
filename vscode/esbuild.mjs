@@ -1,6 +1,5 @@
 import { copyFile, mkdir } from 'node:fs/promises';
 import * as esbuild from 'esbuild';
-import { docmosisToolsAlias } from './aliases.mjs';
 
 const watch = process.argv.includes('--watch');
 
@@ -14,7 +13,6 @@ const configs = [
     format: 'cjs',
     target: 'node20',
     external: ['vscode'],
-    alias: docmosisToolsAlias,
     // The library's run-as-a-script guard reads import.meta.url and copes with it being absent.
     logOverride: { 'empty-import-meta': 'silent' },
   },
