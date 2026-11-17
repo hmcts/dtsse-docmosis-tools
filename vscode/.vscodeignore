@@ -3,7 +3,7 @@
 !dist/webview.js
 !dist/webview.css
 !dist/pdf.worker.min.mjs
-!cli/bin/docmosis
-!cli/lib/docx.mjs
+!media/icon.png
 !package.json
 !README.md
+!LICENSE

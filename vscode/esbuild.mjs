@@ -1,4 +1,4 @@
-import { chmod, copyFile, mkdir } from 'node:fs/promises';
+import { copyFile, mkdir } from 'node:fs/promises';
 import * as esbuild from 'esbuild';
 
 const watch = process.argv.includes('--watch');
@@ -13,8 +13,8 @@ const configs = [
     format: 'cjs',
     target: 'node20',
     external: ['vscode'],
-    // The docmosis template library is an ES module loaded by path at runtime.
-    supported: { 'dynamic-import': true },
+    // The library's run-as-a-script guard reads import.meta.url and copes with it being absent.
+    logOverride: { 'empty-import-meta': 'silent' },
   },
   {
     ...common,
@@ -38,12 +38,6 @@ const configs = [
 await mkdir('dist', { recursive: true });
 await copyFile('node_modules/pdfjs-dist/build/pdf.worker.min.mjs', 'dist/pdf.worker.min.mjs');
 await copyFile('media/webview.css', 'dist/webview.css');
-// The CLI and its library are packaged with the same relative layout as the repo.
-await mkdir('cli/bin', { recursive: true });
-await mkdir('cli/lib', { recursive: true });
-await copyFile('../bin/docmosis', 'cli/bin/docmosis');
-await chmod('cli/bin/docmosis', 0o755);
-await copyFile('../lib/docx.mjs', 'cli/lib/docx.mjs');
 
 if (watch) {
   for (const config of configs) await (await esbuild.context(config)).watch();

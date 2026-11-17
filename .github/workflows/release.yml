@@ -6,10 +6,14 @@ on:
     paths:
       - bin/**
       - lib/**
+      - index.mjs
+      - index.d.ts
+      - package.json
       - vscode/**
 
 permissions:
   contents: write
+  actions: write
 
 concurrency:
   group: release
@@ -26,6 +30,14 @@ jobs:
           cache: npm
           cache-dependency-path: vscode/package-lock.json
       - run: node --test test/*.test.mjs
+      - name: Set the extension version
+        id: version
+        working-directory: vscode
+        run: |
+          # The Marketplace rejects a version it already has; the run number only increases.
+          version="0.1.${GITHUB_RUN_NUMBER}"
+          npm pkg set "version=${version}"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
       - name: Build the extension
         working-directory: vscode
         run: |
@@ -35,11 +47,16 @@ jobs:
       - name: Publish the release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.version.outputs.version }}
         run: |
-          version="$(node -p "require('./vscode/package.json').version")"
-          tag="v${version}-${GITHUB_RUN_NUMBER}-${GITHUB_SHA::7}"
-          gh release create "$tag" vscode/hmcts-template-preview.vsix \
+          gh release create "vscode-v${VERSION}" vscode/hmcts-template-preview.vsix \
             --target "$GITHUB_SHA" \
-            --title "$tag" \
-            --notes "HMCTS Template Preview ${version}, built from ${GITHUB_SHA}." \
+            --title "vscode-v${VERSION}" \
+            --notes "HMCTS Template Preview ${VERSION}, built from ${GITHUB_SHA}." \
             --latest
+      - name: Publish to the Marketplace and Open VSX
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+          BRANCH: ${{ github.event.repository.default_branch }}
+        run: gh workflow run publish.yml -f "tag=vscode-v${VERSION}" --ref "$BRANCH"

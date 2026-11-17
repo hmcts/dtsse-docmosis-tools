@@ -1,31 +1,15 @@
-import { spawn } from 'node:child_process';
-import { accessSync, chmodSync, constants } from 'node:fs';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
+import { RenderError, renderFile, RenderUnreachable } from '@hmcts-cft/docmosis-tools';
 import type { JsonObject } from './data';
 import { shortHash } from './sidecar';
 
-export function resolveCli(setting: string, workspaceFolder: string): string {
-  return setting.replaceAll('${workspaceFolder}', workspaceFolder);
-}
-
-/** The CLI packaged inside the extension, at cli/bin/docmosis with its library at cli/lib/docx.mjs. */
-export function bundledCli(extensionPath: string): string {
-  const cli = path.join(extensionPath, 'cli', 'bin', 'docmosis');
-  // A .vsix is a zip, and the executable bit doesn't always survive installation.
-  try {
-    accessSync(cli, constants.X_OK);
-  } catch {
-    try {
-      chmodSync(cli, 0o755);
-    } catch {
-      // A missing CLI is reported when it is run.
-    }
+/** The service's RenderError with its error lines appended to the message, so one string says everything. */
+export class RenderFailure extends RenderError {
+  constructor(error: RenderError) {
+    super(error.lines.length ? `${error.message}\n${error.lines.join('\n')}` : error.message, error);
   }
-  return cli;
 }
-
-export class RenderError extends Error {}
 export class RenderAbortedError extends Error {}
 
 /** The file name stem for a template's render files, unique per template path. */
@@ -34,68 +18,49 @@ export function renderStem(docx: string): string {
 }
 
 export interface RenderOptions {
-  cli: string;
   docx: string;
   data: JsonObject;
   dev: boolean;
-  /** Folder for the temporary data JSON and the PDF. */
+  /** Folder for the PDF. */
   outDir: string;
-  cwd: string;
-  log?: (text: string) => void;
-  /** Aborting it kills the CLI and rejects with a RenderAbortedError. */
+  /** Aborting it cancels the request and rejects with a RenderAbortedError. */
   signal?: AbortSignal;
+  /** Replaces the global fetch, for tests. */
+  fetchImpl?: typeof fetch;
 }
 
 export interface RenderResult {
   pdfPath: string;
-  dataPath: string;
+  bytes: Uint8Array;
 }
 
-/** Writes the data to a temp JSON and renders the template through `docmosis render-file`, which sends it to the hosted dtsse-doc-render. */
+/** Renders the template on the hosted dtsse-doc-render and writes the PDF to the output folder. */
 export async function renderPdf(options: RenderOptions): Promise<RenderResult> {
-  const { cli, docx, data, dev, outDir, cwd, log, signal } = options;
+  const { docx, data, dev, outDir, signal } = options;
+  if (signal?.aborted) throw new RenderAbortedError('Render cancelled');
   await fs.mkdir(outDir, { recursive: true });
-  const stem = renderStem(docx);
-  const dataPath = path.join(outDir, `${stem}.data.json`);
-  const pdfPath = path.join(outDir, `${stem}.pdf`);
-  await fs.writeFile(dataPath, JSON.stringify(data, null, 2));
-  await fs.rm(pdfPath, { force: true });
+  const pdfPath = path.join(outDir, `${renderStem(docx)}.pdf`);
 
-  const args = ['render-file', docx, dataPath, '--out', pdfPath, ...(dev ? ['--dev'] : [])];
-  log?.(`$ ${cli} ${args.join(' ')}`);
-
-  await new Promise<void>((resolve, reject) => {
-    if (signal?.aborted) {
-      reject(new RenderAbortedError('Render cancelled'));
-      return;
+  let bytes: Buffer;
+  try {
+    ({ bytes } = await renderFile({
+      templatePath: docx,
+      data,
+      format: 'pdf',
+      devMode: dev,
+      signal,
+      fetchImpl: options.fetchImpl,
+    }));
+  } catch (error) {
+    if (signal?.aborted) throw new RenderAbortedError('Render cancelled');
+    if (error instanceof RenderUnreachable) {
+      throw new Error(error.tls ? error.message : `Can't reach dtsse-doc-render: is the VPN connected? (${error.message})`, { cause: error });
     }
-    const child = spawn(cli, args, { cwd, stdio: ['ignore', 'pipe', 'pipe'], ...(signal ? { signal } : {}) });
-    let stderr = '';
-    child.stdout.on('data', (chunk: Buffer) => log?.(chunk.toString()));
-    child.stderr.on('data', (chunk: Buffer) => {
-      stderr += chunk.toString();
-      log?.(chunk.toString());
-    });
-    child.on('error', (error: NodeJS.ErrnoException) => {
-      if (error.name === 'AbortError') {
-        reject(new RenderAbortedError('Render cancelled'));
-        return;
-      }
-      reject(
-        new RenderError(
-          error.code === 'ENOENT'
-            ? `The docmosis CLI wasn't found at ${cli}. Clear the hmctsTemplatePreview.docmosisCli setting to use the CLI bundled with the extension, or point it at bin/docmosis in a dtsse-docmosis-tools checkout.`
-            : error.message,
-        ),
-      );
-    });
-    child.on('close', (code) => {
-      if (code === 0) resolve();
-      else reject(new RenderError(stderr.trim() || `docmosis exited with code ${code}`));
-    });
-  });
-
-  return { pdfPath, dataPath };
+    if (error instanceof RenderError) throw new RenderFailure(error);
+    throw error;
+  }
+  await fs.writeFile(pdfPath, bytes);
+  return { pdfPath, bytes: new Uint8Array(bytes) };
 }
 
 export interface LatestRendererHandlers<Request, Result> {

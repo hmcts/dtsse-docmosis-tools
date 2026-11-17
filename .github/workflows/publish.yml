@@ -1,0 +1,52 @@
+name: Publish extension
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag whose hmcts-template-preview.vsix to publish, such as vscode-v0.1.42
+        required: true
+        type: string
+  # Releases made with GITHUB_TOKEN trigger no workflows, so release.yml dispatches this one;
+  # this trigger covers releases made by hand.
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: extension-publish-${{ inputs.tag || github.event.release.tag_name }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    env:
+      TAG: ${{ inputs.tag || github.event.release.tag_name }}
+      GH_TOKEN: ${{ github.token }}
+      OVSX_PAT: ${{ secrets.OVSX_PAT }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: vscode/package-lock.json
+      # The publishing tools come from the lockfile, without install scripts, so nothing unpinned runs with the OIDC token.
+      - name: Install the publishing tools
+        working-directory: vscode
+        run: npm ci --ignore-scripts
+      - name: Download the release's extension package
+        run: gh release download "$TAG" --repo "$GITHUB_REPOSITORY" -p hmcts-template-preview.vsix --dir vscode
+      - name: Visual Studio Marketplace
+        working-directory: vscode
+        run: npx --no-install vsce publish --oidc --packagePath hmcts-template-preview.vsix --skip-duplicate
+      - name: Open VSX (skipped, no credential)
+        if: env.OVSX_PAT == ''
+        run: echo "Skipping Open VSX, because secrets.OVSX_PAT is not set."
+      - name: Open VSX
+        if: env.OVSX_PAT != ''
+        working-directory: vscode
+        run: npx --no-install ovsx publish hmcts-template-preview.vsix -p "$OVSX_PAT" --skip-duplicate

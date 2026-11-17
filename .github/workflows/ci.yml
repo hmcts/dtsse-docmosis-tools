@@ -11,17 +11,24 @@ permissions:
 jobs:
   cli:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: [24, 26]
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
         with:
-          node-version: 24
-      - run: bash -n bin/docmosis
+          node-version: ${{ matrix.node-version }}
+      - run: node bin/docmosis.mjs --help
       - run: bin/docmosis --help
       - run: node --test test/*.test.mjs
+      - run: npm pack --dry-run
 
   extension:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     defaults:
       run:
         working-directory: vscode

@@ -6,17 +6,35 @@
   "publisher": "hmcts",
   "private": true,
   "license": "MIT",
+  "icon": "media/icon.png",
+  "galleryBanner": {
+    "color": "#1d70b8",
+    "theme": "dark"
+  },
   "repository": {
     "type": "git",
-    "url": "git@github.com:hmcts/dtsse-docmosis-tools.git",
+    "url": "https://github.com/hmcts/dtsse-docmosis-tools.git",
     "directory": "vscode"
   },
-  "engines": {
-    "vscode": "^1.90.0"
+  "homepage": "https://github.com/hmcts/dtsse-docmosis-tools/tree/master/vscode#readme",
+  "bugs": {
+    "url": "https://github.com/hmcts/dtsse-docmosis-tools/issues"
   },
   "categories": [
     "Other"
   ],
+  "keywords": [
+    "docmosis",
+    "hmcts",
+    "template",
+    "docx",
+    "preview",
+    "pdf",
+    "dtsse-doc-render"
+  ],
+  "engines": {
+    "vscode": "^1.90.0"
+  },
   "main": "./dist/extension.js",
   "activationEvents": [
     "onCustomEditor:hmctsTemplatePreview.docxPreview",
@@ -56,16 +74,6 @@
           "group": "navigation@50"
         }
       ]
-    },
-    "configuration": {
-      "title": "HMCTS Template Preview",
-      "properties": {
-        "hmctsTemplatePreview.docmosisCli": {
-          "type": "string",
-          "default": "",
-          "markdownDescription": "Path to the `docmosis` CLI script. Leave empty to use the CLI bundled with the extension. `${workspaceFolder}` is replaced by the workspace folder. The extension also loads the template library from `../lib/docx.mjs` relative to the script, as in a dtsse-docmosis-tools checkout (`bin/docmosis`, `lib/docx.mjs`)."
-        }
-      }
     }
   },
   "scripts": {
@@ -74,18 +82,22 @@
     "watch": "node esbuild.mjs --watch",
     "test": "vitest run",
     "test:integration": "npm run build && xvfb-run -a node test/integration/runTest.mjs",
-    "package": "npm run build && vsce package --no-dependencies --skip-license --out hmcts-template-preview.vsix",
+    "package": "npm run build && vsce package --no-dependencies --out hmcts-template-preview.vsix",
     "vscode:prepublish": "npm run build"
   },
   "devDependencies": {
     "@types/node": "^26.0.0",
     "@types/vscode": "~1.90.0",
     "@vscode/test-electron": "^3.0.0",
-    "@vscode/vsce": "^3.6.0",
+    "@vscode/vsce": "4.1.1",
     "esbuild": "^0.25.0",
     "fflate": "^0.8.2",
+    "ovsx": "1.4.0",
     "pdfjs-dist": "^5.4.0",
     "typescript": "^5.9.0",
     "vitest": "^3.2.0"
+  },
+  "dependencies": {
+    "@hmcts-cft/docmosis-tools": "file:.."
   }
 }

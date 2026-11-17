@@ -1,0 +1,47 @@
+{
+  "name": "@hmcts-cft/docmosis-tools",
+  "version": "0.1.0",
+  "description": "Read, check, edit and render Docmosis .docx template files",
+  "license": "MIT",
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+ssh://git@github.com/hmcts/dtsse-docmosis-tools.git"
+  },
+  "bin": {
+    "docmosis": "bin/docmosis.mjs"
+  },
+  "main": "./index.mjs",
+  "types": "./index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "default": "./index.mjs"
+    },
+    "./docx": {
+      "types": "./lib/docx.d.ts",
+      "default": "./lib/docx.mjs"
+    },
+    "./render": {
+      "types": "./lib/render.d.ts",
+      "default": "./lib/render.mjs"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "bin/docmosis.mjs",
+    "lib/*.mjs",
+    "lib/*.d.ts",
+    "index.mjs",
+    "index.d.ts"
+  ],
+  "engines": {
+    "node": ">=24"
+  },
+  "publishConfig": {
+    "registry": "https://pkgs.dev.azure.com/hmcts/Artifacts/_packaging/hmcts-lib/npm/registry/"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.mjs"
+  }
+}

@@ -11,5 +11,5 @@ await runTests({
   extensionDevelopmentPath: root,
   extensionTestsPath: join(root, 'out-test', 'index.cjs'),
   launchArgs: [workspace, '--disable-extensions', '--disable-workspace-trust', '--disable-dev-shm-usage'],
-  extensionTestsEnv: { TEST_WORKSPACE: workspace, DOCMOSIS_LIB: process.env.DOCMOSIS_LIB ?? join(root, '..', 'lib', 'docx.mjs') },
+  extensionTestsEnv: { TEST_WORKSPACE: workspace },
 });
