@@ -34,6 +34,7 @@ test('--help prints the usage to stderr and exits 0', () => {
     assert.equal(r.status, 0);
     assert.match(r.stderr, /^usage: docmosis <command> \[args\]/);
     assert.match(r.stderr, /render-file <file\.docx> <data\.json>/);
+    assert.match(r.stderr, /schema <template>/);
     assert.equal(r.stdout, '');
 });
 

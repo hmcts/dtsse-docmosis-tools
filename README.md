@@ -62,6 +62,7 @@ Template files (no network):
   text <template>             the template's text, one paragraph per line
   fields <template>           the Docmosis instructions in document order, indented by block
   tree <template>             the instructions as a JSON tree, with the data names each reads
+  schema <template>           the data the template expects, as JSON; see "Schema JSON"
   check <template>            problems Docmosis rejects or mis-renders; exits 1 on errors
   diff <old> <new>            instructions and blocks added, removed and moved
   unpack <file.docx> <dir>    extract a template for editing
@@ -92,6 +93,38 @@ A failed render prints the service's message and exits 1. If the host can't be r
 - It renders a subset of the Docmosis template language (see dtsse-doc-render's `docs/template-language.md`). A successful render is not proof that a template works in Docmosis.
 - The request body is limited to 50 MB.
 - `render-file` checks that the output is a real document before reporting success.
+
+## Schema JSON
+
+`docmosis schema <docx>` prints what data a template expects, inferred from its instructions across every part (body, headers, footers). Other tools consume the output, so its shape is a contract. The package exports the same inference as `inferSchema(tree)` (also at `@hmcts-cft/docmosis-tools/schema`), which takes the nodes of `instructionTree`.
+
+```ts
+type ScalarSchema = { kind: "string" | "boolean" | "date"; controls: string[]; notes: string[]; inputFormat?: string };
+type ObjectSchema = { kind: "object"; controls: string[]; notes: string[]; properties: Record<string, Schema> };
+type ArraySchema  = { kind: "array";  controls: string[]; notes: string[]; item: ObjectSchema };
+type Schema = ScalarSchema | ObjectSchema | ArraySchema;
+type TemplateSchema = { root: ObjectSchema; warnings: string[] };
+```
+
+- `root` is an object whose `properties` are the template's top-level names. A dotted name such as `claimant.name` becomes nested objects; `rs_` and `rr_` repeats become arrays, and what is read inside one is on `item`.
+- A name read only as text is `string`; a name that is a bare condition (`cs_isEngland`) is `boolean`; a name passed to `dateFormat` is `date`, with `inputFormat` set when the template names the format it parses the stored value with.
+- `controls` lists the blocks (for example `cs_isEngland`) whose condition reads the value. `notes` holds remarks such as that the template only tests a value for blank or null.
+- `warnings` lists names used in conflicting ways (for example as both a date and a boolean); the schema keeps the widened or dominant kind.
+- Instruction text is read for names only; expressions are not evaluated, so a name used in arithmetic or a function other than `dateFormat` and `isBlank` is reported as `string`.
+
+```json
+{
+  "root": {
+    "kind": "object", "controls": [], "notes": [],
+    "properties": {
+      "isEngland": { "kind": "boolean", "controls": ["cs_isEngland"], "notes": [] },
+      "issueDate": { "kind": "date", "controls": [], "notes": [], "inputFormat": "yyyy-MM-dd" },
+      "items": { "kind": "array", "controls": [], "notes": [], "item": { "kind": "object", "controls": [], "notes": [], "properties": { "label": { "kind": "string", "controls": [], "notes": [] } } } }
+    }
+  },
+  "warnings": []
+}
+```
 
 ## Tests
 

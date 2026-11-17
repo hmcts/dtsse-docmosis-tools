@@ -26,6 +26,10 @@
       "types": "./lib/render.d.ts",
       "default": "./lib/render.mjs"
     },
+    "./schema": {
+      "types": "./lib/schema.d.ts",
+      "default": "./lib/schema.mjs"
+    },
     "./package.json": "./package.json"
   },
   "files": [
