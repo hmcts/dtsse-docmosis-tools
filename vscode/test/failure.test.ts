@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { fieldsForFailure, indexInstructions, parseRenderFailures } from '../src/failure';
-import { inferSchema } from '../src/schema';
+import { fieldsForFailure, parseRenderFailures } from '../src/failure';
+import { inferSchema, schemaPaths } from '../src/schema';
 import { cond, field, rep } from './helpers';
+import type { InstructionNode } from '../src/tree';
 
 const BAD_EXPRESSION =
   'render failed (HTTP 400):\nUnable to evaluate field expression [status +]:Unexpected end in expression: status +: <<{status +}>> (word/document.xml, paragraph 2)\nTemplate merge failed\n';
@@ -52,7 +53,7 @@ describe('fieldsForFailure', () => {
     rep('items', [field("{dateFormat(due,'d MMMM yyyy','yyyy-MM-dd')}", ['due'])]),
     field('{dateFormat(issueDate,‘d MMMM yyyy’,‘dd-MM-yyyy’)}', ['issueDate']),
   ];
-  const index = indexInstructions(tree, inferSchema(tree).root);
+  const index = inferSchema(tree).refs;
   const failure = (instruction: string) => ({ reason: 'r', instruction, part: 'word/document.xml', where: 'paragraph 1' });
 
   it('finds the field behind the failing instruction', () => {
@@ -73,7 +74,7 @@ describe('fieldsForFailure', () => {
   });
 });
 
-describe('indexInstructions scope prefixes', () => {
+describe('the error index scope prefixes', () => {
   const tree = [
     field('{caseRef}', ['caseRef']),
     rep('parties', [
@@ -89,7 +90,7 @@ describe('indexInstructions scope prefixes', () => {
     field('{court.name}', ['court.name']),
     rep('$root.agents', [field('{$this.id}', ['$this.id']), field('{$parent.caseRef}', ['$parent.caseRef'])]),
   ];
-  const index = indexInstructions(tree, inferSchema(tree).root);
+  const index = inferSchema(tree).refs;
   const pathsFor = (text: string) => index.find((e) => e.text === text)?.paths;
 
   it('resolves $root from inside a repeat', () => {
@@ -110,5 +111,46 @@ describe('indexInstructions scope prefixes', () => {
 
   it('resolves a $root repeat target', () => {
     expect(pathsFor('{$this.id}')).toEqual(['agents[].id']);
+  });
+});
+
+describe('the error index and the schema agree', () => {
+  const cases: Record<string, InstructionNode[]> = {
+    'a filtered repeat': [
+      {
+        type: 'repeat',
+        text: 'rs_items.?[active]',
+        dataRefs: ['items', 'active'],
+        children: [field('{$parent.caseRef}', ['$parent.caseRef']), field('{name}', ['name'])],
+      },
+    ],
+    'an index on the current item': [rep('parties', [field('{$this[0].x}', ['$this[0].x'])])],
+    'spaced prefixes': [
+      cond('cs_$root . flag2', ['$root . flag2']),
+      rep('$root . agents', [field('{$this . id}', ['$this . id'])]),
+    ],
+    'nested repeats': [
+      rep('cases', [rep('parties', [field('{$parent.ref}', ['$parent.ref']), field('{$root.top}', ['$root.top'])])]),
+    ],
+    'an indexed name': [field('{items[0].name}', ['items[0].name']), field('{tags[1]}', ['tags[1]'])],
+  };
+
+  for (const [name, tree] of Object.entries(cases)) {
+    it(`reports only schema paths for ${name}`, () => {
+      const { root, refs } = inferSchema(tree);
+      const known = new Set(schemaPaths(root).map((p) => p.path));
+      for (const entry of refs) for (const path of entry.paths) expect(known.has(path)).toBe(true);
+    });
+  }
+
+  it('reads $parent in a filtered repeat as the enclosing scope', () => {
+    const { refs } = inferSchema(cases['a filtered repeat']!);
+    expect(refs.find((e) => e.text === '{$parent.caseRef}')?.paths).toEqual(['caseRef']);
+    expect(refs.find((e) => e.text === '{name}')?.paths).toEqual(['items[].name']);
+  });
+
+  it('maps an index on a name to an item of the list', () => {
+    const { refs } = inferSchema(cases['an indexed name']!);
+    expect(refs.map((e) => e.paths)).toEqual([['items[].name'], ['tags']]);
   });
 });

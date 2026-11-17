@@ -1,5 +1,4 @@
-import { normaliseQuotes, resolveScopedPath, schemaPaths, type ObjectSchema } from './schema';
-import type { InstructionNode } from './tree';
+import { normaliseQuotes, type InstructionRefs } from './schema';
 
 export interface RenderFailure {
   /** What dtsse-doc-render said was wrong with the instruction. */
@@ -22,29 +21,6 @@ export function parseRenderFailures(text: string): RenderFailure[] {
     if (match) failures.push({ reason: match[1]!, instruction: match[2]!, part: match[3]!, where: match[4]! });
   }
   return failures;
-}
-
-export interface InstructionRefs {
-  text: string;
-  /** Data the instruction reads, as schema paths such as `items[].name`. */
-  paths: string[];
-}
-
-/** Every instruction in the template with the schema paths it reads, scoped by the repeats around it. */
-export function indexInstructions(tree: InstructionNode[], schema: ObjectSchema): InstructionRefs[] {
-  const known = new Set(schemaPaths(schema).map((p) => p.path));
-  const out: InstructionRefs[] = [];
-  const walk = (nodes: InstructionNode[], scopes: string[]): void => {
-    for (const node of nodes) {
-      if (node.type === 'comment') continue;
-      const paths = node.dataRefs.map((ref) => resolveScopedPath(scopes, ref)).filter((p) => known.has(p));
-      if (paths.length > 0) out.push({ text: node.text, paths });
-      const named = node.type === 'repeat' ? /^(?:rs|rr)_(\$(?:root|parent|this)\.)?([A-Za-z_][\w.]*)$/.exec(node.text) : null;
-      walk(node.children, named ? [...scopes, `${resolveScopedPath(scopes, `${named[1] ?? ''}${named[2]}`)}[]`] : scopes);
-    }
-  };
-  walk(tree, ['']);
-  return out;
 }
 
 const canonical = (text: string): string => normaliseQuotes(text).replace(/\s+/g, '');

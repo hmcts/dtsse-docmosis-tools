@@ -220,3 +220,74 @@ test('scope prefixes work end to end from a .docx', () => {
         },
     );
 });
+
+test('a filtered repeat opens a scope, so $parent in it is the enclosing scope and the rest of the filter is read per item', () => {
+    const tree = [
+        { type: 'repeat', text: 'rs_items.?[active]', dataRefs: ['items', 'active'], children: [field('$parent.caseRef'), field('name')] },
+    ];
+    const { root, warnings, refs } = inferSchema(tree);
+    assert.deepEqual(Object.keys(root.properties).sort(), ['caseRef', 'items']);
+    assert.deepEqual(Object.keys(root.properties.items.item.properties).sort(), ['active', 'name']);
+    assert.deepEqual(refs.map((r) => r.paths), [['items', 'items[].active'], ['caseRef'], ['items[].name']]);
+    assert.deepEqual(warnings, []);
+});
+
+test('an unnamed repeat over no list opens a scope with no schema path, and $root still reaches out', () => {
+    const { root, refs } = inferSchema([
+        { type: 'repeat', text: 'rs_{x}', dataRefs: [], children: [field('name'), field('$root.top')] },
+    ]);
+    assert.deepEqual(Object.keys(root.properties), ['top']);
+    assert.deepEqual(refs.map((r) => r.paths), [['top']]);
+});
+
+test('an index reads an item of the list, and an index on $this is not placed', () => {
+    const { root, warnings, refs } = inferSchema([
+        field('items[0].x'),
+        field('tags[1]'),
+        rep('rows', [field('$this[0].x'), field('$this.y')]),
+    ]);
+    assert.equal(root.properties.items.kind, 'array');
+    assert.equal(root.properties.items.item.properties.x.kind, 'string');
+    assert.equal(root.properties.tags.kind, 'array');
+    assert.deepEqual(Object.keys(root.properties.rows.item.properties), ['y']);
+    assert.deepEqual(warnings, ['"rows[][].x" indexes something that is not a list; ignored.']);
+    assert.deepEqual(refs.map((r) => r.paths), [['items[].x'], ['tags'], ['rows'], ['rows[].y']]);
+});
+
+test('names written with spaces around the dot are recognised in conditions, dates, blank tests and repeat targets', () => {
+    const { root } = inferSchema([
+        cond('cs_$root . flag2', ['$root.flag2']),
+        cond('cs_{ !$root . flag3 }', ['$root.flag3']),
+        field("{dateFormat($root . d, 'd MMMM yyyy', 'yyyy-MM-dd')}", ['$root.d']),
+        field('{isBlank($root . b)}', ['$root.b']),
+        { type: 'repeat', text: 'rs_$root . extras', dataRefs: ['$root.extras'], children: [field('$this . id', ['$this.id'])] },
+    ]);
+    const p = root.properties;
+    assert.equal(p.flag2.kind, 'boolean');
+    assert.equal(p.flag3.kind, 'boolean');
+    assert.equal(p.d.kind, 'date');
+    assert.equal(p.d.inputFormat, 'yyyy-MM-dd');
+    assert.equal(p.b.kind, 'string');
+    assert.equal(p.extras.kind, 'array');
+    assert.equal(p.extras.item.properties.id.kind, 'string');
+});
+
+test('a conflict warns once, by resolved path, across spellings', () => {
+    const { warnings } = inferSchema([
+        field("{dateFormat(x, 'd MMMM yyyy', 'yyyy-MM-dd')}", ['x']),
+        field("{dateFormat($root.x, 'd MMMM yyyy', 'dd-MM-yyyy')}", ['$root.x']),
+        field("{dateFormat($root . x, 'd MMMM yyyy', 'dd-MM-yyyy')}", ['$root.x']),
+    ]);
+    assert.deepEqual(warnings, ['"x" is read as a date in more than one input format (yyyy-MM-dd, dd-MM-yyyy); using yyyy-MM-dd.']);
+});
+
+test('the error index paths are all schema paths, in every scope', () => {
+    const tree = [
+        field('a.b'),
+        rep('cases', [rep('$this.parties', [field('$parent.ref'), field('$root.top'), field('$this.n')])]),
+        { type: 'repeat', text: 'rs_cases.?[x]', dataRefs: ['cases', 'x'], children: [field('$parent.y')] },
+    ];
+    const { root, refs } = inferSchema(tree);
+    const known = new Set(schemaPaths(root).map((p) => p.path));
+    for (const r of refs) for (const p of r.paths) assert.ok(known.has(p), p);
+});

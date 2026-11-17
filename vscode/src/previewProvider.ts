@@ -6,8 +6,8 @@ import * as vscode from 'vscode';
 import { isObject, type JsonObject } from './data';
 import type { HostToWebview, TemplateInfo, WebviewToHost } from './messages';
 import { LatestRenderer, renderPdf } from './render';
-import { fieldsForFailure, indexInstructions, parseRenderFailures, type InstructionRefs } from './failure';
-import { inferSchema, type ObjectSchema } from './schema';
+import { fieldsForFailure, parseRenderFailures } from './failure';
+import { inferSchema, type InstructionRefs, type ObjectSchema } from './schema';
 import { ensureSidecarFolder, readTemplateSidecar, sidecarPath, writeSidecar } from './sidecar';
 import { CachedTemplateReader } from './templateTree';
 import type { InstructionNode } from './tree';
@@ -121,9 +121,9 @@ class PreviewSession {
     const tree = await this.reader.read();
     if (!force && tree === this.tree) return undefined;
     this.tree = tree;
-    const { root, warnings } = inferSchema(tree);
+    const { root, warnings, refs } = inferSchema(tree);
     this.schema = root;
-    this.instructions = indexInstructions(tree, root);
+    this.instructions = refs;
     return { name: path.basename(this.docx), schema: root, warnings };
   }
 

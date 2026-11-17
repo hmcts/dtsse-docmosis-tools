@@ -67,7 +67,7 @@ export function dataRefs(instruction: string): string[];
 export function text(template: TemplateInput): { part: string; lines: { kind: 'para' | 'row'; loc: string; text: string }[] }[];
 export function fields(template: TemplateInput): Record<string, unknown>[];
 export function instructionTree(template: TemplateInput): { part: string; children: TreeNode[] }[];
-export function templateSchema(template: TemplateInput): InferResult;
+export function templateSchema(template: TemplateInput): Omit<InferResult, 'refs'>;
 export function check(template: TemplateInput): CheckResult;
 export function diff(oldTemplate: TemplateInput, newTemplate: TemplateInput): DiffResult;
 export function unpack(file: string, dir: string): unknown;
