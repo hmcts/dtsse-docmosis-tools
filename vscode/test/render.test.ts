@@ -30,7 +30,7 @@ async function fakeCli(script: string): Promise<{ cli: string; dir: string }> {
 }
 
 describe('renderPdf', () => {
-  it('writes the data, runs `local render` with --out and returns the PDF path', async () => {
+  it('writes the data, runs `render-file` with --out and returns the PDF path', async () => {
     const { cli, dir } = await fakeCli(
       'echo "$@" > "$(dirname "$0")/args"; while [ $# -gt 0 ]; do [ "$1" = --out ] && out="$2"; shift; done; echo %PDF-fake > "$out"',
     );
@@ -38,7 +38,7 @@ describe('renderPdf', () => {
     expect(await readFile(result.pdfPath, 'utf8')).toContain('%PDF');
     expect(JSON.parse(await readFile(result.dataPath, 'utf8'))).toEqual({ a: 1 });
     const args = (await readFile(join(dir, 'args'), 'utf8')).trim().split(' ');
-    expect(args.slice(0, 2)).toEqual(['local', 'render']);
+    expect(args.slice(0, 2)).toEqual(['render-file', expect.stringMatching(/T\.docx$/)]);
     expect(args).not.toContain('--dev');
   });
 
@@ -48,6 +48,14 @@ describe('renderPdf', () => {
     );
     await renderPdf({ cli, docx: join(dir, 'T.docx'), data: {}, dev: true, outDir: join(dir, 'out'), cwd: dir });
     expect((await readFile(join(dir, 'args'), 'utf8')).trim().split(' ')).toContain('--dev');
+  });
+
+  it('passes the service URL to the CLI as DOC_RENDER_URL', async () => {
+    const { cli, dir } = await fakeCli(
+      'echo "$DOC_RENDER_URL" > "$(dirname "$0")/url"; while [ $# -gt 0 ]; do [ "$1" = --out ] && out="$2"; shift; done; : > "$out"',
+    );
+    await renderPdf({ cli, docx: join(dir, 'T.docx'), data: {}, dev: false, docRenderUrl: 'https://doc-render.example', outDir: join(dir, 'out'), cwd: dir });
+    expect((await readFile(join(dir, 'url'), 'utf8')).trim()).toBe('https://doc-render.example');
   });
 
   it('rejects with the CLI stderr on failure', async () => {

@@ -1,7 +1,7 @@
 {
   "name": "hmcts-template-preview",
   "displayName": "HMCTS Template Preview",
-  "description": "Preview Docmosis .docx templates: detects the template's variables, builds an input form and renders the PDF through a local Docmosis.",
+  "description": "Preview Docmosis .docx templates: detects the template's variables, builds an input form and renders the PDF through the hosted dtsse-doc-render service in AAT (VPN).",
   "version": "0.1.0",
   "publisher": "hmcts",
   "private": true,
@@ -60,6 +60,11 @@
     "configuration": {
       "title": "HMCTS Template Preview",
       "properties": {
+        "hmctsTemplatePreview.docRenderUrl": {
+          "type": "string",
+          "default": "https://doc-render.aat.platform.hmcts.net",
+          "markdownDescription": "The dtsse-doc-render service that renders the preview. The default is the AAT instance, which is only reachable over the VPN. Passed to the CLI as `DOC_RENDER_URL`."
+        },
         "hmctsTemplatePreview.docmosisCli": {
           "type": "string",
           "default": "",

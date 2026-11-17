@@ -270,6 +270,7 @@ class PreviewSession {
       docx: this.docx,
       data: request.data,
       dev: request.dev,
+      docRenderUrl: vscode.workspace.getConfiguration('hmctsTemplatePreview').get<string>('docRenderUrl', '').trim(),
       outDir,
       cwd: this.root,
       log: (text) => this.output.append(text),
