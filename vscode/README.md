@@ -25,6 +25,12 @@ Toolbar:
 
 Data is saved on every render at `<workspaceFolder>/.hmcts-template-preview/<template path>/default.json`, where `<template path>` is the template's path in the workspace without `.docx` (so `a/X.docx` and `b/X.docx` keep separate data). Data saved by earlier versions under `.hmcts-template-preview/<template name>/default.json` is loaded when the new file doesn't exist yet. The folder contains a `.gitignore` with `*`, so it is never committed. The form holds only the values you supplied; missing values aren't defaulted.
 
+## The docmosis command in the terminal
+
+The extension also provides the `docmosis` command (the [CLI](../README.md#commands): `text`, `fields`, `check`, `diff`, `unpack`, `pack`, `render-file`) in VS Code's integrated terminals, with no separate install. It is added to the terminal's `PATH` when the extension activates, so it appears in terminals opened after that: close and reopen a terminal that was already open. It runs on your `node` when that is version 24 or later, and on VS Code's own Node otherwise.
+
+Set `hmctsTemplatePreview.terminalCommand` to `false` to stop adding it. Outside VS Code, install `@hmcts-cft/docmosis-tools` from the hmcts-lib feed instead (see the [root README](../README.md#install)).
+
 ## Install
 
 - **Marketplace:** search for "HMCTS Template Preview" (publisher `hmcts`) in the Extensions view, or run `code --install-extension hmcts.hmcts-template-preview`. Open VSX, for VS Code forks, carries the same id once it is published there. The `hmcts` publisher is unverified, so VS Code asks once to trust it on first install.
@@ -52,7 +58,7 @@ Open this folder in VS Code and press F5 to start an Extension Development Host,
 
 | Script | |
 |---|---|
-| `npm run build` | Type-check, then bundle `dist/extension.js` (node) and `dist/webview.js` (browser) with esbuild, and copy the pdf.js worker. |
+| `npm run build` | Type-check, then bundle `dist/extension.js` (node), `dist/webview.js` (browser) and the CLI (`dist/cli/docmosis-cli.mjs`, with the `docmosis` and `docmosis.cmd` launchers from `cli/`) with esbuild, and copy the pdf.js worker. |
 | `npm test` | Unit tests (vitest). `RENDER_LIVE_TEMPLATE=<file.docx> npm test` also renders that template on the real dtsse-doc-render (VPN). |
 | `npm run test:integration` | Opens the editor in a real VS Code under `xvfb-run` with a local stand-in for dtsse-doc-render (`@vscode/test-electron`; downloads VS Code on first run). |
 | `npm run package` | Build, then write `hmcts-template-preview.vsix`. |

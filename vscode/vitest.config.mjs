@@ -5,4 +5,5 @@ export default defineConfig({
   resolve: {
     alias: { vscode: fileURLToPath(new URL('./test/vscodeStub.ts', import.meta.url)) },
   },
+  test: { globalSetup: ['./test/globalSetup.ts'] },
 });

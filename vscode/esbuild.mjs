@@ -1,5 +1,6 @@
 import { copyFile, mkdir } from 'node:fs/promises';
 import * as esbuild from 'esbuild';
+import { cliConfig } from './esbuild.cli.mjs';
 
 const watch = process.argv.includes('--watch');
 
@@ -16,6 +17,7 @@ const configs = [
     // The library's run-as-a-script guard reads import.meta.url and copes with it being absent.
     logOverride: { 'empty-import-meta': 'silent' },
   },
+  cliConfig('dist/cli/docmosis-cli.mjs'),
   {
     ...common,
     entryPoints: ['src/webview/main.ts'],
@@ -38,6 +40,9 @@ const configs = [
 await mkdir('dist', { recursive: true });
 await copyFile('node_modules/pdfjs-dist/build/pdf.worker.min.mjs', 'dist/pdf.worker.min.mjs');
 await copyFile('media/webview.css', 'dist/webview.css');
+await mkdir('dist/cli', { recursive: true });
+await copyFile('cli/docmosis', 'dist/cli/docmosis');
+await copyFile('cli/docmosis.cmd', 'dist/cli/docmosis.cmd');
 
 if (watch) {
   for (const config of configs) await (await esbuild.context(config)).watch();
