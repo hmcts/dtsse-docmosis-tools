@@ -1,7 +1,10 @@
 // lib/render.mjs against an injected fetch; no network.
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { test } from 'node:test';
-import { DEFAULT_URL, renderFile, RenderError, RenderUnreachable } from '../lib/render.mjs';
+import { DEFAULT_URL, renderFile, RenderError, RenderOptionError, RenderUnreachable } from '../lib/render.mjs';
 
 const DOCX = Buffer.from('PK\x03\x04template');
 const BODIES = {
@@ -103,11 +106,12 @@ test('DNS and connection failures are RenderUnreachable', async () => {
     };
     await assert.rejects(renderFile({ template: DOCX, data: {}, url: 'https://doc-render.aat.platform.hmcts.net', fetchImpl: failing('ENOTFOUND') }), (e) => {
         assert.ok(e instanceof RenderUnreachable);
-        assert.equal(e.dns, true);
-        assert.equal(e.message, 'cannot resolve doc-render.aat.platform.hmcts.net');
+        assert.equal(e.code, 'ENOTFOUND');
+        assert.equal(e.tls, false);
+        assert.equal(e.message, 'cannot resolve doc-render.aat.platform.hmcts.net (ENOTFOUND)');
         return true;
     });
-    await assert.rejects(renderFile({ template: DOCX, data: {}, fetchImpl: failing('ECONNREFUSED') }), (e) => e instanceof RenderUnreachable && !e.dns);
+    await assert.rejects(renderFile({ template: DOCX, data: {}, fetchImpl: failing('ECONNREFUSED') }), (e) => e instanceof RenderUnreachable && !e.tls && e.code === 'ECONNREFUSED');
     await assert.rejects(
         renderFile({ template: DOCX, data: {}, fetchImpl: async () => { throw new DOMException('timed out', 'TimeoutError'); } }),
         RenderUnreachable,
@@ -146,4 +150,88 @@ test('DOC_RENDER_URL is read on each call', async () => {
 
 test('an unknown format is rejected before any request', async () => {
     await assert.rejects(renderFile({ template: DOCX, data: {}, format: 'rtf', fetchImpl: () => assert.fail('no request') }), TypeError);
+});
+
+const withEnv = async (value, fn) => {
+    const saved = process.env.DOC_RENDER_URL;
+    if (value === undefined) delete process.env.DOC_RENDER_URL;
+    else process.env.DOC_RENDER_URL = value;
+    try {
+        return await fn();
+    } finally {
+        if (saved === undefined) delete process.env.DOC_RENDER_URL;
+        else process.env.DOC_RENDER_URL = saved;
+    }
+};
+const okFetch = (urls) => async (url) => (urls.push(url), reply(BODIES.pdf[0], 200, 'application/pdf'));
+
+test('an empty DOC_RENDER_URL falls back to the default', async () => {
+    const urls = [];
+    await withEnv('', () => renderFile({ template: DOCX, data: {}, fetchImpl: okFetch(urls) }));
+    assert.deepEqual(urls, [`${DEFAULT_URL}/api/render`]);
+});
+
+test('a malformed service URL is a RenderOptionError before any request, and the env var is checked too', async () => {
+    const noRequest = () => assert.fail('no request');
+    await assert.rejects(renderFile({ template: DOCX, data: {}, url: 'not a url', fetchImpl: noRequest }), (e) => {
+        assert.ok(e instanceof RenderOptionError);
+        assert.match(e.message, /not a valid URL: not a url/);
+        return true;
+    });
+    await assert.rejects(withEnv('doc-render:8080', () => renderFile({ template: DOCX, data: {}, fetchImpl: noRequest })), RenderOptionError);
+    await assert.rejects(renderFile({ template: DOCX, data: {}, url: 'ftp://host', fetchImpl: noRequest }), /http:\/\/ or https:\/\//);
+});
+
+test('TLS and socket failures say the VPN or network is at fault and keep the code', async () => {
+    const failing = (code, message = code) => async () => {
+        throw new TypeError('fetch failed', { cause: Object.assign(new Error(message), { code }) });
+    };
+    for (const code of ['ERR_TLS_CERT_ALTNAME_INVALID', 'ERR_SSL_WRONG_VERSION_NUMBER', 'UNABLE_TO_VERIFY_LEAF_SIGNATURE', 'CERT_HAS_EXPIRED', 'SELF_SIGNED_CERT_IN_CHAIN', 'DEPTH_ZERO_SELF_SIGNED_CERT', 'UND_ERR_SOCKET', 'ECONNRESET']) {
+        await assert.rejects(renderFile({ template: DOCX, data: {}, url: 'https://svc', fetchImpl: failing(code, 'detail text') }), (e) => {
+            assert.ok(e instanceof RenderUnreachable, code);
+            assert.equal(e.tls, true);
+            assert.equal(e.code, code);
+            assert.ok(e.message.includes(code) && e.message.includes('VPN or the network is probably at fault'), e.message);
+            return true;
+        });
+    }
+});
+
+test('another fetch failure keeps the cause code and message in the error', async () => {
+    const fetchImpl = async () => {
+        throw new TypeError('fetch failed', { cause: Object.assign(new Error('bad header'), { code: 'UND_ERR_INVALID_ARG' }) });
+    };
+    await assert.rejects(renderFile({ template: DOCX, data: {}, url: 'http://svc', fetchImpl }), (e) => {
+        assert.ok(e instanceof RenderError);
+        assert.equal(e.message, 'request to http://svc failed: fetch failed (UND_ERR_INVALID_ARG: bad header)');
+        return true;
+    });
+});
+
+test('template and data each take bytes or an object, or a path, and exactly one of the two', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'render-test-'));
+    try {
+        const docxPath = path.join(dir, 'My.docx');
+        const dataPath = path.join(dir, 'd.json');
+        fs.writeFileSync(docxPath, DOCX);
+        fs.writeFileSync(dataPath, '{"amount": 100.00, "id": 12345678901234567890, "k": 1, "k": 2}');
+        let form;
+        const fetchImpl = async (url, init) => ((form = init.body), reply(BODIES.pdf[0], 200, 'application/pdf'));
+        await renderFile({ templatePath: docxPath, dataPath, fetchImpl });
+        assert.equal(form.get('templateFile').name, 'My.docx');
+        assert.deepEqual(Buffer.from(await form.get('templateFile').arrayBuffer()), DOCX);
+        assert.equal(await form.get('data').text(), '{"amount": 100.00, "id": 12345678901234567890, "k": 1, "k": 2}');
+
+        await renderFile({ template: DOCX, data: { path: 'x' }, fetchImpl });
+        assert.equal(await form.get('data').text(), '{"path":"x"}');
+
+        const noRequest = () => assert.fail('no request');
+        await assert.rejects(renderFile({ template: DOCX, templatePath: docxPath, data: {}, fetchImpl: noRequest }), RenderOptionError);
+        await assert.rejects(renderFile({ data: {}, fetchImpl: noRequest }), RenderOptionError);
+        await assert.rejects(renderFile({ template: DOCX, data: {}, dataPath, fetchImpl: noRequest }), RenderOptionError);
+        await assert.rejects(renderFile({ template: DOCX, fetchImpl: noRequest }), RenderOptionError);
+        await assert.rejects(renderFile({ template: DOCX, data: '/some/file.json', fetchImpl: noRequest }), /data must be an object/);
+    } finally {
+        fs.rmSync(dir, { recursive: true, force: true });
+    }
 });

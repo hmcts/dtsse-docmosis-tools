@@ -1,2 +1,2 @@
 #!/bin/sh
-exec node "$(dirname "$0")/docmosis.mjs" "$@"
+NODE_USE_ENV_PROXY=1 exec node --use-system-ca "$(dirname "$0")/docmosis.mjs" "$@"

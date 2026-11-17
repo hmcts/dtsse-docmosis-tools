@@ -7,7 +7,7 @@ A VS Code extension that previews Docmosis `.docx` templates.
 - Renders on the hosted [dtsse-doc-render](https://github.com/hmcts/dtsse-doc-render) service and shows the PDF beside the form. It re-renders 600 ms after you stop typing, and when the `.docx` changes on disk.
 - Reports coverage: values the template uses that the data lacks, and data keys the template never uses.
 
-It sends the template and data to dtsse-doc-render, which is reachable only over the VPN, so connect it first (a render that fails with "Can't reach dtsse-doc-render: is the VPN connected?" means it is not). Set `DOC_RENDER_URL` in the environment VS Code starts in to use another instance. The service implements a subset of the Docmosis template language (see its `docs/template-language.md`), so a successful preview is not proof that a template works in Docmosis. The extension bundles the `@hmcts-cft/docmosis-tools` library, which the `docmosis` CLI also uses, so it works in any workspace and the two agree on what a template contains.
+It sends the template and data to dtsse-doc-render, which is reachable only over the VPN, so connect it first (a render that fails with "Can't reach dtsse-doc-render: is the VPN connected?" means it is not). Set `DOC_RENDER_URL` in the environment VS Code starts in to use another instance. Proxies and certificates come from VS Code's `http.proxy`, `http.proxySupport` and `http.fetchAdditionalSupport` settings, which patch `fetch` in the extension host. The service implements a subset of the Docmosis template language (see its `docs/template-language.md`), so a successful preview is not proof that a template works in Docmosis. The extension bundles the `@hmcts-cft/docmosis-tools` library, which the `docmosis` CLI also uses, so it works in any workspace and the two agree on what a template contains.
 
 ## Use
 
@@ -28,7 +28,7 @@ Data is saved on every render at `<workspaceFolder>/.hmcts-template-preview/<tem
 ## Install
 
 - **Marketplace:** search for "HMCTS Template Preview" (publisher `hmcts`) in the Extensions view, or run `code --install-extension hmcts.hmcts-template-preview`. Open VSX, for VS Code forks, carries the same id once it is published there. The `hmcts` publisher is unverified, so VS Code asks once to trust it on first install.
-- **GitHub release:** download `hmcts-template-preview.vsix` from the [latest release](https://github.com/hmcts/dtsse-docmosis-tools/releases/latest) and run `code --install-extension hmcts-template-preview.vsix`. Releases are versioned `0.1.<run number>`.
+- **GitHub release:** download `hmcts-template-preview.vsix` from the [latest release](https://github.com/hmcts/dtsse-docmosis-tools/releases/latest) and run `code --install-extension hmcts-template-preview.vsix`. Releases are tagged `vscode-v0.1.<run number>`.
 - **Devcontainer:** the cft-workspace devcontainer runs `.devcontainer/install-template-preview.sh` on attach, which installs the latest release's `.vsix` into the attached VS Code and updates it when a newer release appears.
 
 To build it yourself (Node 20 or later and npm):

@@ -4,11 +4,11 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Release tag whose hmcts-template-preview.vsix to publish, such as v0.1.42
+        description: Release tag whose hmcts-template-preview.vsix to publish, such as vscode-v0.1.42
         required: true
         type: string
-  # Releases created with GITHUB_TOKEN do not trigger workflows, so release.yml dispatches this one
-  # itself; this trigger covers releases made by hand.
+  # Releases made with GITHUB_TOKEN trigger no workflows, so release.yml dispatches this one;
+  # this trigger covers releases made by hand.
   release:
     types: [published]
 

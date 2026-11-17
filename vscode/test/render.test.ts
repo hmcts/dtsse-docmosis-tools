@@ -1,8 +1,9 @@
 import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { RenderError } from '@hmcts-cft/docmosis-tools';
 import { describe, expect, it, vi } from 'vitest';
-import { LatestRenderer, RenderAbortedError, RenderError, renderPdf, renderStem } from '../src/render';
+import { LatestRenderer, RenderAbortedError, renderPdf, renderStem } from '../src/render';
 
 const PDF = Buffer.from('%PDF-fake');
 
@@ -62,8 +63,30 @@ describe('renderPdf', () => {
     const { fetchImpl } = fakeFetch(() => new Response(body, { status: 400, headers: { 'content-type': 'application/json' } }));
     const error = await renderPdf({ docx, data: {}, dev: false, outDir: join(dir, 'out'), fetchImpl }).catch((e: unknown) => e);
     expect(error).toBeInstanceOf(RenderError);
-    expect((error as RenderError).message).toContain('Render failed (HTTP 400)');
+    expect((error as RenderError).message).toContain('render failed (HTTP 400)');
     expect((error as RenderError).lines).toContain('Unknown field: <<x>> (word/document.xml, paragraph 2)');
+  });
+
+  it('keeps the library message for a failure that never got an HTTP status', async () => {
+    const { dir, docx } = await template();
+    const fetchImpl = (async () => {
+      throw new TypeError('fetch failed', { cause: Object.assign(new Error('bad header'), { code: 'UND_ERR_INVALID_ARG' }) });
+    }) as unknown as typeof fetch;
+    const error = await renderPdf({ docx, data: {}, dev: false, outDir: join(dir, 'out'), fetchImpl }).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(RenderError);
+    expect((error as RenderError).status).toBe(0);
+    expect((error as RenderError).message).toBe('request to https://doc-render.aat.platform.hmcts.net failed: fetch failed (UND_ERR_INVALID_ARG: bad header)');
+    expect((error as RenderError).message).not.toContain('undefined');
+  });
+
+  it('explains a 200 response that is not a PDF, with the start of what came back', async () => {
+    const { dir, docx } = await template();
+    const { fetchImpl } = fakeFetch(() => new Response('<html>sign in</html>', { headers: { 'content-type': 'text/html' } }));
+    const error = await renderPdf({ docx, data: {}, dev: false, outDir: join(dir, 'out'), fetchImpl }).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(RenderError);
+    expect((error as RenderError).message).toContain('the response is not a pdf (HTTP 200, content-type text/html)');
+    expect((error as RenderError).message).toContain('<html>sign in</html>');
+    expect((error as RenderError).lines).toEqual(['<html>sign in</html>']);
   });
 
   it('asks whether the VPN is connected when the service cannot be reached', async () => {

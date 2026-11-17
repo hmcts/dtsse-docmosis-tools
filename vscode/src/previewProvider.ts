@@ -1,10 +1,11 @@
 import * as fsp from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
+import { RenderError } from '@hmcts-cft/docmosis-tools';
 import * as vscode from 'vscode';
 import { isObject, type JsonObject } from './data';
 import type { HostToWebview, TemplateInfo, WebviewToHost } from './messages';
-import { LatestRenderer, RenderError, renderPdf } from './render';
+import { LatestRenderer, renderPdf } from './render';
 import { fieldsForFailure, indexInstructions, parseRenderFailures, type InstructionRefs } from './failure';
 import { inferSchema, type ObjectSchema } from './schema';
 import { ensureSidecarFolder, readTemplateSidecar, sidecarPath, writeSidecar } from './sidecar';

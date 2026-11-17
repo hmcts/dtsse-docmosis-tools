@@ -1,6 +1,6 @@
 # Publishing
 
-The release workflow (`.github/workflows/release.yml`) builds `0.1.<run number>`, creates the GitHub release and dispatches `.github/workflows/publish.yml` for its tag. That workflow downloads the release's `hmcts-template-preview.vsix` and publishes it to the Visual Studio Marketplace with trusted publishing (OIDC), so no token is stored. It can also be run by hand with a `tag`, and runs on a release published by hand.
+The release workflow (`.github/workflows/release.yml`) builds `0.1.<run number>`, creates the GitHub release and dispatches `.github/workflows/publish.yml` for its tag, `vscode-v0.1.<run number>`. That workflow downloads the release's `hmcts-template-preview.vsix` and publishes it to the Visual Studio Marketplace with trusted publishing (OIDC), so no token is stored. It can also be run by hand with a `tag`, and runs on a release published by hand.
 
 ## Visual Studio Marketplace
 

@@ -36,7 +36,7 @@ docmosis --help
 import { renderFile, RenderError, RenderUnreachable, check, fields } from '@hmcts-cft/docmosis-tools';
 
 try {
-  const { bytes } = await renderFile({ template: 'T.docx', data: { name: 'Ada' }, format: 'pdf' });
+  const { bytes } = await renderFile({ templatePath: 'T.docx', data: { name: 'Ada' }, format: 'pdf' });
 } catch (e) {
   if (e instanceof RenderUnreachable) console.error('VPN down?', e.message);
   else if (e instanceof RenderError) console.error(e.status, e.shortMsg, e.lines);
@@ -44,9 +44,11 @@ try {
 }
 ```
 
-`renderFile({ template, data, format = 'pdf', devMode = false, url = DOC_RENDER_URL, fetchImpl })` takes a template (bytes or a path) and data (an object or a JSON path), and resolves to `{ bytes, contentType, format }` after checking the output is a real document of that format. `@hmcts-cft/docmosis-tools/docx` and `@hmcts-cft/docmosis-tools/render` import each half alone.
+`renderFile({ template | templatePath, data | dataPath, format = 'pdf', devMode = false, url, signal, fetchImpl })` takes the template as bytes (`template`) or a .docx file (`templatePath`), and the data as an object (`data`) or a JSON file sent exactly as written (`dataPath`). The service is `url`, else `DOC_RENDER_URL` when set and not empty, else the AAT instance. It resolves to `{ bytes, contentType, format }` after checking the output is a real document of that format. `@hmcts-cft/docmosis-tools/docx` and `@hmcts-cft/docmosis-tools/render` import each half alone.
 
-The extension bundles the CLI, so it works in any workspace. Download `hmcts-template-preview.vsix` from the [latest release](https://github.com/hmcts/dtsse-docmosis-tools/releases/latest) and install it:
+Node's `fetch` ignores `HTTPS_PROXY` and `NO_PROXY` and the system certificate store unless Node starts with `NODE_USE_ENV_PROXY=1` and `--use-system-ca`. The `docmosis` command always starts that way (`bin/docmosis` sets them, and `bin/docmosis.mjs` restarts Node with them when they are missing); a program that calls the library has to set them itself.
+
+The extension bundles the library, so it works in any workspace. Download `hmcts-template-preview.vsix` from the [latest release](https://github.com/hmcts/dtsse-docmosis-tools/releases/latest) and install it:
 
 ```sh
 curl -fsSLO https://github.com/hmcts/dtsse-docmosis-tools/releases/latest/download/hmcts-template-preview.vsix
@@ -105,4 +107,4 @@ npm test
 npm run package    # writes hmcts-template-preview.vsix
 ```
 
-Every push to master that changes `bin/`, `lib/` or `vscode/` publishes a GitHub release with the `.vsix` and dispatches `publish.yml` to publish it to the Marketplace and Open VSX. Every push that changes `bin/`, `lib/`, `index.*` or `package.json` also publishes the npm package to the `hmcts-lib` feed, patch-bumping past the versions already tagged.
+Every push to master that changes `bin/`, `lib/` or `vscode/` publishes a GitHub release with the `.vsix` and dispatches `publish.yml` to publish it to the Marketplace and Open VSX. Every push that changes `bin/`, `lib/`, `index.*` or `package.json` also publishes the npm package to the `hmcts-lib` feed, patch-bumping past the versions already tagged `npm-v<version>`. Extension releases are tagged `vscode-v0.1.<run number>`.

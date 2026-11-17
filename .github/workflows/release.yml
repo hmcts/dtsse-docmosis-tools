@@ -34,7 +34,7 @@ jobs:
         id: version
         working-directory: vscode
         run: |
-          # The Marketplace rejects a version it already has, and the run number only increases.
+          # The Marketplace rejects a version it already has; the run number only increases.
           version="0.1.${GITHUB_RUN_NUMBER}"
           npm pkg set "version=${version}"
           echo "version=${version}" >> "$GITHUB_OUTPUT"
@@ -49,9 +49,9 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VERSION: ${{ steps.version.outputs.version }}
         run: |
-          gh release create "v${VERSION}" vscode/hmcts-template-preview.vsix \
+          gh release create "vscode-v${VERSION}" vscode/hmcts-template-preview.vsix \
             --target "$GITHUB_SHA" \
-            --title "v${VERSION}" \
+            --title "vscode-v${VERSION}" \
             --notes "HMCTS Template Preview ${VERSION}, built from ${GITHUB_SHA}." \
             --latest
       - name: Publish to the Marketplace and Open VSX
@@ -59,4 +59,4 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ steps.version.outputs.version }}
           BRANCH: ${{ github.event.repository.default_branch }}
-        run: gh workflow run publish.yml -f "tag=v${VERSION}" --ref "$BRANCH"
+        run: gh workflow run publish.yml -f "tag=vscode-v${VERSION}" --ref "$BRANCH"

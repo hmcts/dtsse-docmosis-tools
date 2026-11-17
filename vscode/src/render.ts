@@ -1,16 +1,13 @@
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
-import { RenderError as ServiceError, renderFile, RenderUnreachable } from '@hmcts-cft/docmosis-tools';
+import { RenderError, renderFile, RenderUnreachable } from '@hmcts-cft/docmosis-tools';
 import type { JsonObject } from './data';
 import { shortHash } from './sidecar';
 
-/** A render the service refused or that couldn't reach it; `lines` are the service's error lines. */
-export class RenderError extends Error {
-  constructor(
-    message: string,
-    readonly lines: string[] = [],
-  ) {
-    super(message);
+/** The service's RenderError with its error lines appended to the message, so one string says everything. */
+export class RenderFailure extends RenderError {
+  constructor(error: RenderError) {
+    super(error.lines.length ? `${error.message}\n${error.lines.join('\n')}` : error.message, error);
   }
 }
 export class RenderAbortedError extends Error {}
@@ -43,27 +40,23 @@ export async function renderPdf(options: RenderOptions): Promise<RenderResult> {
   if (signal?.aborted) throw new RenderAbortedError('Render cancelled');
   await fs.mkdir(outDir, { recursive: true });
   const pdfPath = path.join(outDir, `${renderStem(docx)}.pdf`);
-  const send = options.fetchImpl ?? ((input, init) => fetch(input, init));
 
   let bytes: Buffer;
   try {
     ({ bytes } = await renderFile({
-      template: docx,
+      templatePath: docx,
       data,
       format: 'pdf',
       devMode: dev,
       signal,
-      fetchImpl: send,
+      fetchImpl: options.fetchImpl,
     }));
   } catch (error) {
-    if (signal?.aborted || (error as Error).name === 'AbortError') throw new RenderAbortedError('Render cancelled');
+    if (signal?.aborted) throw new RenderAbortedError('Render cancelled');
     if (error instanceof RenderUnreachable) {
-      throw new RenderError("Can't reach dtsse-doc-render: is the VPN connected?");
+      throw new Error(error.tls ? error.message : `Can't reach dtsse-doc-render: is the VPN connected? (${error.message})`, { cause: error });
     }
-    if (error instanceof ServiceError) {
-      const lines = error.lines ?? [];
-      throw new RenderError(`Render failed (HTTP ${error.status}):\n${lines.join('\n') || error.shortMsg || error.longMsg}`, lines);
-    }
+    if (error instanceof RenderError) throw new RenderFailure(error);
     throw error;
   }
   await fs.writeFile(pdfPath, bytes);

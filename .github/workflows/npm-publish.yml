@@ -10,8 +10,7 @@ on:
       - index.d.ts
       - package.json
 
-# Never cancel a release in progress: two overlapping publishes would race on the version
-# number and one of them would publish a version that is already taken.
+# Overlapping publishes would race on the version number, so a release in progress is never cancelled.
 concurrency:
   group: npm-publish-${{ github.ref }}
   cancel-in-progress: false
@@ -19,7 +18,7 @@ concurrency:
 jobs:
   release:
     runs-on: ubuntu-latest
-    # No id-token: npm provenance is npmjs.org-only and Azure Artifacts does not support it.
+    # No id-token: Azure Artifacts does not support npm provenance.
     permissions:
       contents: write
     steps:
@@ -31,30 +30,27 @@ jobs:
         with:
           node-version: 24
 
-      # CI runs on pull requests only, so without these a direct push to master would publish
-      # whatever it was given.
+      # CI runs on pull requests only, so a direct push to master is gated here.
       - name: Test
         run: node --test test/*.test.mjs
 
       - name: Check the package contents
         run: npm pack --dry-run
 
-      # A version set by hand on master is published as it stands; anything else gets a
-      # patch bump. An existing tag is the test for "already released", and the loop is what
-      # makes an unrecorded bump recoverable: it steps past every version already tagged.
+      # A version set by hand on master is published as it stands; anything else gets a patch
+      # bump. The npm-v<version> tag marks a version as released, and the loop steps past every
+      # tagged version. The extension's vscode-v tags are a separate series.
       - name: Resolve the version to publish
         id: bump
         run: |
           current="$(node -p 'require("./package.json").version')"
-          while git rev-parse -q --verify "refs/tags/v${current}" >/dev/null; do
+          while git rev-parse -q --verify "refs/tags/npm-v${current}" >/dev/null; do
             npm version patch --no-git-tag-version
             current="$(node -p 'require("./package.json").version')"
           done
-          echo "publishing v${current}"
+          echo "publishing npm-v${current}"
           echo "version=${current}" >> "$GITHUB_OUTPUT"
 
-      # Kept line-for-line from cnp-githubactions-library/npm-publish-library so that moving
-      # to the shared action later is a straight substitution.
       - name: Configure npm authentication for Azure Artifacts
         env:
           AZURE_DEVOPS_ARTIFACT_USERNAME: ${{ secrets.AZURE_DEVOPS_ARTIFACT_USERNAME }}
@@ -65,7 +61,7 @@ jobs:
           token_b64="$(printf %s "$AZURE_DEVOPS_ARTIFACT_TOKEN" | base64 | tr -d '\n')"
           username="${AZURE_DEVOPS_ARTIFACT_USERNAME:-github}"
           feed="${FEED_URL%/}/"
-          # Strip the scheme to build the npm-style "//host/path/" auth keys.
+          # npm auth keys are "//host/path/", without the scheme.
           feed_no_scheme="${feed#https:}"
           cat > "$HOME/.npmrc" <<EOF
           registry=${feed}
@@ -74,18 +70,17 @@ jobs:
           ${feed_no_scheme}:_password=${token_b64}
           ${feed_no_scheme}:email=github-actions@hmcts.net
           EOF
-          # Defend against publishConfig.registry going missing — npm prefers @<scope>:registry
-          # over the default `registry=` line.
+          # npm prefers @<scope>:registry over registry=, so this keeps the scope on the feed even if
+          # publishConfig.registry goes missing.
           echo "@${NPM_SCOPE#@}:registry=${feed}" >> "$HOME/.npmrc"
 
       - name: Publish
         run: npm publish
 
-      # Publish first: a tag with no package behind it is a cosmetic gap, since the next run
-      # bumps past it. The opposite — a published version master does not know about — is not
-      # recoverable on its own: every later run bumps to that same number and npm answers 403
-      # "the feed already contains" for good. That is what happened to 0.0.14, so the push
-      # below has to survive a merge landing while the gates ran.
+      # Publish first: a tag with no package behind it is harmless, since the next run bumps past
+      # it. A published version that master does not record is not: every later run resolves to
+      # the same number and the feed refuses it for good, so the push below has to survive a
+      # merge landing while the gates ran.
       - name: Commit the bump and tag the release
         env:
           VERSION: ${{ steps.bump.outputs.version }}
@@ -93,22 +88,20 @@ jobs:
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add package.json
-          # Said from more than one place below, and it is the only record of the way out.
-          UNRECORDED="published v${VERSION} but could not record the bump on ${GITHUB_REF_NAME}. Set version to ${VERSION} in package.json by hand, or the next release will retry a version the feed already has."
-          # A version master already records needs no bump committing, and `git commit` on a
-          # clean tree exits non-zero under `-e`. The tag below is then the only mark of release.
+          UNRECORDED="published npm-v${VERSION} but could not record the bump on ${GITHUB_REF_NAME}. Set version to ${VERSION} in package.json by hand, or the next release will retry a version the feed already has."
+          # A version master already records needs no commit, and `git commit` on a clean tree
+          # exits non-zero.
           if git diff --cached --quiet; then
               published="$(git rev-parse HEAD)"
           else
               # This cannot loop: pushes made with GITHUB_TOKEN do not trigger workflows.
-              git commit -m "chore: release v${VERSION} [skip ci]"
+              git commit -m "chore: release npm-v${VERSION} [skip ci]"
               # The commit that was gated and packed, pinned before the loop below can rebase it
-              # onto a merge that landed meanwhile, so `git checkout v<version>` gives you what
-              # the feed has. The object survives because `actions/checkout` sets `gc.auto 0`.
+              # onto a merge that landed meanwhile, so the tag points at what the feed has.
               published="$(git rev-parse HEAD)"
-              # A merge during the gates leaves this push non-fast-forward. Rebase onto it and
-              # try again: the commit touches package.json alone, and the concurrency group means
-              # no other release can be moving that file underneath us.
+              # A merge during the gates leaves this push non-fast-forward. Rebase onto it and retry:
+              # the commit touches package.json alone, and the concurrency group keeps other
+              # releases from moving that file.
               for attempt in 1 2 3; do
                   if git push origin "HEAD:${GITHUB_REF_NAME}"; then
                       break
@@ -117,10 +110,8 @@ jobs:
                       echo "::error::${UNRECORDED}" >&2
                       exit 1
                   fi
-                  # Both of these can fail under `-e` — a conflicting rebase most plausibly,
-                  # since a merge editing the top of package.json lands within the default merge
-                  # context of the version line. Without catching them the step dies before the
-                  # message above, which is the only place the way out is written down.
+                  # A conflicting rebase is plausible when a merge edits the top of package.json;
+                  # catching it keeps the way out in the error message.
                   git fetch origin "${GITHUB_REF_NAME}" || true
                   git rebase "origin/${GITHUB_REF_NAME}" || {
                       echo "::error::${UNRECORDED}" >&2
@@ -128,9 +119,8 @@ jobs:
                   }
               done
           fi
-          # Fatal, because the tag is what the next run reads to know this version is gone. A
-          # missing one has it resolve the same number again and npm answers 409 for good.
-          git push origin "${published}:refs/tags/v${VERSION}" || {
-              echo "::error::published v${VERSION} but could not tag it. Run: git push origin ${published}:refs/tags/v${VERSION}" >&2
+          # Fatal, because the next run reads the tag to know this version is taken.
+          git push origin "${published}:refs/tags/npm-v${VERSION}" || {
+              echo "::error::published npm-v${VERSION} but could not tag it. Run: git push origin ${published}:refs/tags/npm-v${VERSION}" >&2
               exit 1
           }

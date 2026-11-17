@@ -1,6 +1,7 @@
 // bin/docmosis.mjs, spawned.
 import assert from 'node:assert/strict';
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
+import http from 'node:http';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -89,4 +90,73 @@ test('the bin/docmosis shim runs the Node CLI', () => {
     const r = spawnSync(SHIM, ['text', fixture], { encoding: 'utf8' });
     assert.equal(r.status, 0);
     assert.match(r.stdout, /Hello <<name>>/);
+});
+
+const spawned = (cmd, args, env) =>
+    new Promise((resolve) => {
+        const child = spawn(cmd, args, { cwd: tmp, env: { ...process.env, ...env } });
+        let stdout = '';
+        let stderr = '';
+        child.stdout.on('data', (d) => (stdout += d));
+        child.stderr.on('data', (d) => (stderr += d));
+        child.on('close', (status) => resolve({ status, stdout, stderr }));
+    });
+
+const listen = (handler) =>
+    new Promise((resolve) => {
+        const server = http.createServer(handler);
+        server.listen(0, '127.0.0.1', () => resolve({ server, port: server.address().port }));
+    });
+
+const answerPdf = (res) => res.writeHead(200, { 'content-type': 'application/pdf' }).end('%PDF-1.7 ok');
+
+test('render-file sends the data file exactly as written', async () => {
+    const raw = '{"amount": 100.00, "id": 12345678901234567890, "k": 1, "k": 2}';
+    const dataFile = path.join(tmp, 'raw.json');
+    fs.writeFileSync(dataFile, raw);
+    const bodies = [];
+    const { server, port } = await listen((req, res) => {
+        const chunks = [];
+        req.on('data', (c) => chunks.push(c));
+        req.on('end', () => {
+            bodies.push(Buffer.concat(chunks).toString('latin1'));
+            answerPdf(res);
+        });
+    });
+    try {
+        const out = path.join(tmp, 'raw.pdf');
+        const r = await spawned(process.execPath, [CLI, 'render-file', fixture, dataFile, '--out', out], { DOC_RENDER_URL: `http://127.0.0.1:${port}` });
+        assert.equal(r.status, 0, r.stderr);
+        assert.ok(bodies[0].includes(raw), 'the raw text is in the multipart body');
+    } finally {
+        server.close();
+    }
+});
+
+test('a malformed DOC_RENDER_URL is a clean error', async () => {
+    const r = await spawned(process.execPath, [CLI, 'render-file', fixture, path.join(tmp, 'raw.json')], { DOC_RENDER_URL: 'not a url' });
+    assert.equal(r.status, 1);
+    assert.equal(r.stderr, 'the service URL is not a valid URL: not a url\n');
+});
+
+test('render-file goes through HTTP_PROXY from either entry point, however Node was started', async () => {
+    const seen = [];
+    const { server, port } = await listen((req, res) => {
+        seen.push(req.url);
+        answerPdf(res);
+    });
+    try {
+        const env = { HTTP_PROXY: `http://127.0.0.1:${port}`, NO_PROXY: '', DOC_RENDER_URL: 'http://doc-render.invalid:8123' };
+        for (const [cmd, args] of [
+            [process.execPath, [CLI]],
+            [SHIM, []],
+        ]) {
+            seen.length = 0;
+            const r = await spawned(cmd, [...args, 'render-file', fixture, path.join(tmp, 'raw.json'), '--out', path.join(tmp, 'proxied.pdf')], env);
+            assert.equal(r.status, 0, r.stderr);
+            assert.deepEqual(seen, ['http://doc-render.invalid:8123/api/render'], cmd);
+        }
+    } finally {
+        server.close();
+    }
 });
