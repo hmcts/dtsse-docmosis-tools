@@ -10,7 +10,7 @@ export const shortHash = (file: string): string => createHash('sha256').update(p
 
 /**
  * The template's path relative to the workspace, without its extension, as the sidecar folder
- * name: `Templates/Base/X.docx` saves to `.hmcts-template-preview/Templates/Base/X/default.json`.
+ * name: `docs/X.docx` saves to `.hmcts-template-preview/docs/X/default.json`.
  * A template outside the workspace uses `_external/<name>-<hash>`.
  */
 function sidecarKey(root: string, docx: string): string {

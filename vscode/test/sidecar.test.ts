@@ -10,10 +10,10 @@ describe('sidecar', () => {
   });
 
   it('keeps templates with the same file name in different folders apart', () => {
-    const base = sidecarPath('/ws', '/ws/Templates/Base/X.docx');
-    const aat = sidecarPath('/ws', '/ws/Templates/AAT/X.docx');
-    expect(base).toBe('/ws/.hmcts-template-preview/Templates/Base/X/default.json');
-    expect(aat).toBe('/ws/.hmcts-template-preview/Templates/AAT/X/default.json');
+    const base = sidecarPath('/ws', '/ws/a/X.docx');
+    const b = sidecarPath('/ws', '/ws/b/X.docx');
+    expect(base).toBe('/ws/.hmcts-template-preview/a/X/default.json');
+    expect(b).toBe('/ws/.hmcts-template-preview/b/X/default.json');
   });
 
   it('keys a template outside the workspace by its name and a hash of its path', () => {

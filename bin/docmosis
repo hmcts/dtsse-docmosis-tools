@@ -1,12 +1,10 @@
 #!/usr/bin/env bash
-# Read, edit, check and render Docmosis templates.
+# Read, check, edit and render Docmosis template files (.docx).
 #
 # Usage: docmosis <command> [args]   (docmosis --help for detail)
 #
-# Templates live in hmcts/rdo-docmosis under Templates/<Base|AAT|...>/. Stored templates render
-# on a Docmosis instance's REST API, with an access key read from Key Vault or a cluster pod
-# and never printed. Local files render on the hosted dtsse-doc-render, which needs no key.
-# Background: https://github.com/hmcts/cft-workspace/blob/master/docs/how-to/edit-a-docmosis-template.md
+# Templates are read and edited as files. render-file sends one, with its data, to the hosted
+# dtsse-doc-render.
 
 set -euo pipefail
 
@@ -25,7 +23,7 @@ require_tools() {
     for t in "$@"; do command -v "$t" >/dev/null || die "$t not on PATH"; done
 }
 
-vpn_down_die() { die "$1: the VPN is probably down; run /cft-vpn or f5-cli status"; }
+vpn_down_die() { die "$1: the VPN is probably down; check it with f5-cli status"; }
 
 # Dies unless the host of <url> resolves, when it is a VPN-only name.
 require_vpn_for() {
@@ -38,15 +36,6 @@ require_vpn_for() {
         dscacheutil -q host -a name "$host" 2>/dev/null | grep -q ip_address
     fi || vpn_down_die "cannot resolve $host"
 }
-
-DEFAULT_URL="https://docmosis.aat.platform.hmcts.net"
-# rpa-aat holds the platform's AAT access key; teams copy it into their own vaults.
-DEFAULT_VAULT="${DOCMOSIS_VAULT:-rpa-aat}"
-DEFAULT_SECRET="${DOCMOSIS_SECRET:-docmosis-access-key}"
-DEFAULT_CONTEXT="cft-preview-00-aks"
-PREVIEW_NAMESPACE="docmosis"
-PREVIEW_RELEASE_PREFIX="docmosis-docmosis-unified-pr-"
-POD_TEMPLATES="/home/docmosis/templates"
 
 DOC_RENDER_URL="${DOC_RENDER_URL:-https://doc-render.aat.platform.hmcts.net}"
 RENDER_FORMATS="pdf docx doc odt html txt"
@@ -72,19 +61,7 @@ Template files (no network):
                                  keep their original bytes
   <template> is a .docx file or a folder made by unpack.
 
-Docmosis instance:
-  status                         check the instance answers
-  structure <template-name>      the instance's view of a stored template's fields
-  sample <template-name>         the instance's placeholder data for a stored template,
-                                 the data the hmcts/docmosis PR check renders with
-  render <template-name> <data.json> [--out file] [--dev] [--format pdf|docx]
-                                 render a stored template with your data; --dev renders
-                                 field errors into the document instead of failing
-  put <ns>/<pod-or-release> <file.docx>
-                                 copy a template into a hmcts/docmosis preview PR pod
-                                 (docmosis-docmosis-unified-pr-<n> only) to render it there
-
-Hosted render service (dtsse-doc-render in AAT; VPN only, no access key):
+Rendering (dtsse-doc-render; needs jq and curl, and the VPN):
   render-file <file.docx> <data.json> [--out file] [--format F] [--dev]
                                  render a template file from your machine. The file is sent
                                  with the request, so nothing is uploaded or stored and an
@@ -93,65 +70,29 @@ Hosted render service (dtsse-doc-render in AAT; VPN only, no access key):
                                  --dev renders field errors into the document instead of
                                  failing. DOC_RENDER_URL overrides the service
                                  (default https://doc-render.aat.platform.hmcts.net).
-                                 The instance options below don't apply to it
-  It renders the subset of Docmosis in dtsse-doc-render's docs/template-language.md, so a
-  render there doesn't prove a template works in Docmosis: the hmcts/docmosis PR check
-  stays the gate. If it can't be reached, the VPN is probably down (/cft-vpn).
-
-Instance options (or set DOCMOSIS_URL):
-  --url URL                      default https://docmosis.aat.platform.hmcts.net (VPN);
-                                 AAT has no upload endpoint, so it only renders the
-                                 templates in its own store
-  --vault NAME --secret NAME     where the access key is read from (DOCMOSIS_VAULT,
-                                 DOCMOSIS_SECRET; default rpa-aat / docmosis-access-key)
-  --preview <n>                  use hmcts/docmosis PR <n>'s preview release: port-forward
-                                 to its pod and read the access key from it
-  --port-forward <ns>/<svc>      use a cluster service through kubectl port-forward
-  --pod-key <ns>/<pod-or-release>
-                                 read the access key from a pod's DOCMOSIS_ACCESSKEY; a
-                                 release name finds its pod by app.kubernetes.io/instance
-  --context NAME                 kubectl context for the cluster options and put
-                                 (default cft-preview-00-aks)
-
-Template names are the file names in hmcts/rdo-docmosis, e.g. CV-PCS-CLM-ENG-Claim-Pack.docx.
+  dtsse-doc-render implements a subset of the Docmosis template language, so a successful
+  render is not proof that a template works in Docmosis. If it can't be reached, the VPN is
+  probably down.
 
 Examples:
-  docmosis unpack CV-PCS-CLM-ENG-Claim-Pack-V2.docx /tmp/v2 && $EDITOR /tmp/v2/word/document.xml
-  docmosis pack /tmp/v2 CV-PCS-CLM-ENG-Claim-Pack-V2.docx && docmosis check CV-PCS-CLM-ENG-Claim-Pack-V2.docx
-  docmosis render CV-PCS-CLM-ENG-Claim-Pack.docx payload.json --dev
-  docmosis put docmosis/docmosis-docmosis-unified-pr-123 CV-PCS-CLM-ENG-Claim-Pack-V2.docx
-  docmosis render CV-PCS-CLM-ENG-Claim-Pack-V2.docx payload.json --preview 123
-  docmosis render-file Templates/AAT/CV-PCS-CLM-ENG-Claim-Pack-V2.docx payload.json
+  docmosis unpack Claim-Pack-V2.docx /tmp/v2 && $EDITOR /tmp/v2/word/document.xml
+  docmosis pack /tmp/v2 Claim-Pack-V2.docx && docmosis check Claim-Pack-V2.docx
+  docmosis render-file Claim-Pack-V2.docx payload.json --dev
 EOF
 }
 
-URL="${DOCMOSIS_URL:-$DEFAULT_URL}"
-VAULT="$DEFAULT_VAULT"
-SECRET="$DEFAULT_SECRET"
-KCTX="$DEFAULT_CONTEXT"
-FORWARD=""
-POD_KEY=""
-PREVIEW=""
 ARGS=()
 OUT=""
 DEV=false
 FORMAT=pdf
-API_PATH=""
-INSTANCE_OPT=""
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
         -h|--help) usage; exit 0 ;;
-        --url) INSTANCE_OPT="--url"; URL="$2"; shift 2 ;;
-        --vault) INSTANCE_OPT="--vault"; VAULT="$2"; shift 2 ;;
-        --secret) INSTANCE_OPT="--secret"; SECRET="$2"; shift 2 ;;
-        --context) INSTANCE_OPT="--context"; KCTX="$2"; shift 2 ;;
-        --port-forward) INSTANCE_OPT="--port-forward"; FORWARD="$2"; shift 2 ;;
-        --pod-key) INSTANCE_OPT="--pod-key"; POD_KEY="$2"; shift 2 ;;
-        --preview) INSTANCE_OPT="--preview"; PREVIEW="$2"; shift 2 ;;
         --out) OUT="$2"; shift 2 ;;
         --dev) DEV=true; shift ;;
         --format) FORMAT="$2"; shift 2 ;;
+        --*) die "unknown option $1 (see --help)" ;;
         *) ARGS+=("$1"); shift ;;
     esac
 done
@@ -159,18 +100,7 @@ set -- "${ARGS[@]+"${ARGS[@]}"}"
 COMMAND="${1:-}"
 [[ -n "$COMMAND" ]] || { usage; exit 2; }
 shift
-if [[ "$COMMAND" == render-file ]]; then
-    [[ -z "$INSTANCE_OPT" ]] || die "render-file always uses dtsse-doc-render (DOC_RENDER_URL), so $INSTANCE_OPT doesn't apply; for real Docmosis use: docmosis render <name> <data.json> --preview <n>"
-    [[ " $RENDER_FORMATS " == *" $FORMAT "* ]] || die "--format is one of: $RENDER_FORMATS"
-else
-    [[ "$FORMAT" == pdf || "$FORMAT" == docx ]] || die "--format is pdf or docx"
-fi
-
-if [[ -n "$PREVIEW" ]]; then
-    [[ "$PREVIEW" =~ ^[0-9]+$ ]] || die "--preview takes a hmcts/docmosis PR number"
-    [[ -z "$FORWARD" && -z "$POD_KEY" ]] || die "--preview replaces --port-forward and --pod-key"
-    POD_KEY="$PREVIEW_NAMESPACE/$PREVIEW_RELEASE_PREFIX$PREVIEW"
-fi
+[[ " $RENDER_FORMATS " == *" $FORMAT "* ]] || die "--format is one of: $RENDER_FORMATS"
 
 docx() { node "$LIB/docx.mjs" "$@"; }
 
@@ -185,137 +115,9 @@ is_output() {
         txt) [[ "${2:-}" == text/plain* ]] ;;
     esac
 }
-k() { kubectl --context "$KCTX" "$@"; }
-
-# <ns>/<pod-or-release> -> pod name. A release is found the way hmcts/docmosis's
-# scripts/validate-pr-templates.sh finds it.
-resolve_pod() {
-    local ns="${1%%/*}" target="${1#*/}" pod
-    [[ "$1" == */* && -n "$ns" && -n "$target" ]] || die "expected <namespace>/<pod-or-release>, got '$1'"
-    if k get pod -n "$ns" "$target" >/dev/null 2>&1; then
-        pod="$target"
-    else
-        pod="$(k get pods -n "$ns" -l "app.kubernetes.io/instance=$target,!job-name" \
-            -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)"
-    fi
-    [[ -n "$pod" ]] || die "no pod '$target', or pod of release '$target', in namespace $ns (context $KCTX)"
-    printf '%s\n' "$pod"
-}
-
-PF_PID=""
-PF_LOG=""
-cleanup() {
-    [[ -z "$PF_PID" ]] || kill "$PF_PID" 2>/dev/null || true
-    [[ -z "$PF_LOG" ]] || rm -f "$PF_LOG"
-}
-trap cleanup EXIT
-
-# kubectl runs directly in the background, so PF_PID is kubectl itself and cleanup stops it.
-# Local port 0 has kubectl choose a free port, so a forward left over on a fixed port can't
-# answer in its place.
-forward() {
-    local ns="$1" resource="$2" remote="$3" port=""
-    require_tools kubectl
-    PF_LOG="$(mktemp)"
-    kubectl --context "$KCTX" port-forward -n "$ns" "$resource" ":$remote" >"$PF_LOG" 2>&1 &
-    PF_PID=$!
-    for _ in $(seq 1 60); do
-        kill -0 "$PF_PID" 2>/dev/null || die "kubectl port-forward to $ns/$resource failed (context $KCTX): $(tail -3 "$PF_LOG")"
-        port="$(sed -n 's/^Forwarding from 127\.0\.0\.1:\([0-9][0-9]*\) .*/\1/p' "$PF_LOG" | sed -n 1p)"
-        [[ -n "$port" ]] && curl -s -o /dev/null -m 5 "http://127.0.0.1:$port/" && break
-        port=""
-        sleep 0.5
-    done
-    [[ -n "$port" ]] || die "kubectl port-forward to $ns/$resource didn't answer within 30 seconds"
-    kill -0 "$PF_PID" 2>/dev/null || die "kubectl port-forward to $ns/$resource exited"
-    URL="http://127.0.0.1:$port"
-    API_PATH="${API_PATH:-/api}"
-}
-
-connect() {
-    local pod=""
-    require_tools jq curl
-    [[ -n "$PREVIEW$FORWARD" ]] || require_vpn_for "$URL"
-    if [[ -n "$POD_KEY" ]]; then
-        require_tools kubectl
-        pod="$(resolve_pod "$POD_KEY")"
-    fi
-    if [[ -n "$PREVIEW" ]]; then
-        forward "$PREVIEW_NAMESPACE" "pod/$pod" 8080
-    elif [[ -n "$FORWARD" ]]; then
-        forward "${FORWARD%%/*}" "svc/${FORWARD#*/}" 80
-    fi
-    if [[ -n "$pod" ]]; then
-        ACCESS_KEY="$(k exec -n "${POD_KEY%%/*}" "$pod" -- printenv DOCMOSIS_ACCESSKEY 2>/dev/null)" \
-            || die "couldn't read DOCMOSIS_ACCESSKEY from pod $pod"
-    else
-        require_tools az
-        ACCESS_KEY="$(az keyvault secret show --vault-name "$VAULT" --name "$SECRET" --query value -o tsv)" \
-            || die "couldn't read $SECRET from $VAULT"
-    fi
-    [[ -n "$ACCESS_KEY" ]] || die "the access key is empty"
-    API_PATH="${API_PATH:-/rs}"
-}
-
-# POSTs the JSON body with the access key added. jq reads the key from its environment and
-# curl reads the body from stdin, so the key is never in a command's arguments.
-api() {
-    local path="$1" body="$2"
-    ACCESS_KEY="$ACCESS_KEY" jq -c '. + {accessKey: env.ACCESS_KEY}' <<<"$body" \
-        | curl -sS -m 120 -X POST -H 'Content-Type: application/json' --data-binary @- "${@:3}" "$URL$path"
-}
-
-# Renders into the file $2 and prints the HTTP status, or curl's error and 000.
-render_to() {
-    { api "$API_PATH/render" "$1" -w '%{stderr}%{http_code}' >"$2"; } 2>&1
-}
-
-render_failed() {
-    printf 'render failed (HTTP %s):\n' "$1" >&2
-    cat "$2" >&2; echo >&2
-    rm -f "$2"
-    exit 1
-}
-
-api_json() {
-    local reply code body
-    reply="$(api "$1" "$2" -w '\n%{http_code}')"
-    code="${reply##*$'\n'}"
-    body="${reply%$'\n'*}"
-    if ! jq -e . >/dev/null 2>&1 <<<"$body"; then
-        printf 'HTTP %s, not JSON:\n%s\n' "$code" "$(head -c 2000 <<<"$body")" >&2
-        exit 1
-    fi
-    jq "$3" <<<"$body"
-}
-
-# Copying into a shared Docmosis would change what other teams render, so put only
-# accepts a preview PR release's pod, checked against the pod's own label, and only
-# for an open hmcts/docmosis PR the current GitHub user opened, so it never writes
-# into someone else's preview.
-put_template() {
-    local target="$1" file="$2" pod instance ns="${1%%/*}"
-    [[ -f "$file" && "$file" == *.docx ]] || die "put needs a .docx file"
-    require_tools kubectl gh
-    [[ "$KCTX" == *preview* ]] || die "put only works on a preview cluster; --context is $KCTX"
-    pod="$(resolve_pod "$target")"
-    instance="$(k get pod -n "$ns" "$pod" -o jsonpath='{.metadata.labels.app\.kubernetes\.io/instance}')"
-    [[ "$instance" =~ ^${PREVIEW_RELEASE_PREFIX}[0-9]+$ ]] \
-        || die "refusing: pod $pod belongs to release '${instance:-none}', not a ${PREVIEW_RELEASE_PREFIX}<n> preview release"
-    local pr="${instance##*-}" me owner
-    me="$(gh api user --jq .login)" || die "put needs gh, signed in, to check who opened the PR"
-    owner="$(gh pr view "$pr" -R hmcts/docmosis --json author,state --jq 'select(.state=="OPEN") | .author.login')" \
-        || die "couldn't read hmcts/docmosis PR #$pr"
-    [[ "$owner" == "$me" ]] \
-        || die "refusing: hmcts/docmosis PR #$pr is not an open PR opened by you ($me); its author is ${owner:-unknown, or it is closed}"
-    k cp "$file" "$ns/$pod:$POD_TEMPLATES/$(basename "$file")"
-    printf 'copied %s to %s:%s/ (release %s)\n' "$(basename "$file")" "$pod" "$POD_TEMPLATES" "$instance"
-    printf 'render it with: docmosis render %s <data.json> --preview %s\n' "$(basename "$file")" "${instance##*-}"
-}
-
 
 # Renders a local file on dtsse-doc-render. The template travels with the request, so there
-# is no key and nothing to clean up on the service. Errors come back as
+# is nothing to clean up on the service. Errors come back as
 # {succeeded:false, shortMsg, longMsg}.
 render_file() {
     local file="$1" data="$2" base out reply code type rc=0
@@ -374,29 +176,5 @@ case "$COMMAND" in
     pack)
         [[ -d "${1:-}" && -n "${2:-}" ]] || die "pack needs a folder and a .docx file"
         docx pack "$1" "$2" ;;
-    put)
-        [[ -n "${1:-}" && -n "${2:-}" ]] || die "put needs <ns>/<pod-or-release> and a .docx file"
-        put_template "$1" "$2" ;;
-    status)
-        connect
-        curl -sS -m 20 -o /dev/null -w "%{http_code} $URL\n" "$URL$API_PATH/status" ;;
-    structure)
-        [[ -n "${1:-}" ]] || die "structure needs a template name"
-        connect
-        api_json "$API_PATH/getTemplateStructure" "$(jq -cn --arg t "$1" '{templateName: $t}')" . ;;
-    sample)
-        [[ -n "${1:-}" ]] || die "sample needs a template name"
-        connect
-        api_json "$API_PATH/getSampleData" "$(jq -cn --arg t "$1" '{templateName: $t, format: "json", stringify: false}')" \
-            '.templateSampleData // .' ;;
-    render)
-        [[ -n "${1:-}" && -f "${2:-}" ]] || die "render needs a template name and a data .json file"
-        connect
-        out="${OUT:-$(basename "${1%.*}").$FORMAT}"
-        body="$(jq -c --arg t "$1" --argjson dev "$DEV" --arg f "$FORMAT" \
-            '{templateName: $t, outputName: ("render." + $f), devMode: $dev, data: .}' "$2")"
-        code="$(render_to "$body" "$out")" || true
-        if [[ "$code" != 200 ]] || ! is_output "$out"; then render_failed "$code" "$out"; fi
-        printf 'rendered %s (%s bytes)\n' "$out" "$(wc -c <"$out" | tr -d " ")" ;;
-    *) usage; exit 2 ;;
+    *) die "unknown command $COMMAND (see --help)" ;;
 esac
