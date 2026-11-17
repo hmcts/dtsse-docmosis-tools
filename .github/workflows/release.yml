@@ -13,6 +13,7 @@ on:
 
 permissions:
   contents: write
+  actions: write
 
 concurrency:
   group: release
@@ -21,8 +22,6 @@ concurrency:
 jobs:
   release:
     runs-on: ubuntu-latest
-    outputs:
-      version: ${{ steps.version.outputs.version }}
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -60,43 +59,9 @@ jobs:
           name: vsix
           path: vscode/hmcts-template-preview.vsix
           if-no-files-found: error
-
-  publish:
-    needs: release
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      id-token: write
-    env:
-      VSCE_PAT: ${{ secrets.VSCE_PAT }}
-      VSCE_AZURE_CLIENT_ID: ${{ vars.VSCE_AZURE_CLIENT_ID }}
-      OVSX_PAT: ${{ secrets.OVSX_PAT }}
-    steps:
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 24
-      - uses: actions/download-artifact@v8
-        with:
-          name: vsix
-      - name: Visual Studio Marketplace (skipped, no credential)
-        if: env.VSCE_PAT == '' && env.VSCE_AZURE_CLIENT_ID == ''
-        run: echo "Skipping the Visual Studio Marketplace, because neither secrets.VSCE_PAT nor vars.VSCE_AZURE_CLIENT_ID is set."
-      - name: Visual Studio Marketplace (access token)
-        if: env.VSCE_PAT != ''
-        run: npx --yes @vscode/vsce@3 publish --packagePath hmcts-template-preview.vsix --skip-duplicate
-      - name: Sign in to Azure
-        if: env.VSCE_PAT == '' && env.VSCE_AZURE_CLIENT_ID != ''
-        uses: azure/login@v3
-        with:
-          client-id: ${{ vars.VSCE_AZURE_CLIENT_ID }}
-          tenant-id: ${{ vars.VSCE_AZURE_TENANT_ID }}
-          subscription-id: ${{ vars.VSCE_AZURE_SUBSCRIPTION_ID }}
-      - name: Visual Studio Marketplace (Entra identity)
-        if: env.VSCE_PAT == '' && env.VSCE_AZURE_CLIENT_ID != ''
-        run: npx --yes @vscode/vsce@3 publish --packagePath hmcts-template-preview.vsix --azure-credential --skip-duplicate
-      - name: Open VSX (skipped, no credential)
-        if: env.OVSX_PAT == ''
-        run: echo "Skipping Open VSX, because secrets.OVSX_PAT is not set."
-      - name: Open VSX
-        if: env.OVSX_PAT != ''
-        run: npx --yes ovsx@0 publish hmcts-template-preview.vsix -p "$OVSX_PAT" --skip-duplicate
+      - name: Publish to the Marketplace and Open VSX
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+          BRANCH: ${{ github.event.repository.default_branch }}
+        run: gh workflow run publish.yml -f "tag=v${VERSION}" --ref "$BRANCH"

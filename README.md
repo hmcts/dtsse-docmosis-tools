@@ -105,4 +105,4 @@ npm test
 npm run package    # writes hmcts-template-preview.vsix
 ```
 
-Every push to master that changes `bin/`, `lib/` or `vscode/` publishes a GitHub release with the `.vsix`. Every push that changes `bin/`, `lib/`, `index.*` or `package.json` also publishes the npm package to the `hmcts-lib` feed, patch-bumping past the versions already tagged.
+Every push to master that changes `bin/`, `lib/` or `vscode/` publishes a GitHub release with the `.vsix` and dispatches `publish.yml` to publish it to the Marketplace and Open VSX. Every push that changes `bin/`, `lib/`, `index.*` or `package.json` also publishes the npm package to the `hmcts-lib` feed, patch-bumping past the versions already tagged.
