@@ -1,0 +1,616 @@
+#!/usr/bin/env bash
+# Read, edit, check and render Docmosis templates.
+#
+# Usage: docmosis <command> [args]   (docmosis --help for detail)
+#
+# Templates live in hmcts/docmosis under Templates/<Base|AAT|...>/. Rendering uses a
+# Docmosis Tornado instance's REST API. The access key is read from Key Vault, or from a
+# cluster pod's environment, by this script and never printed.
+# Background: https://github.com/hmcts/cft-workspace/blob/master/docs/how-to/edit-a-docmosis-template.md
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+LIB="$SCRIPT_DIR/../lib"
+
+if [[ -t 2 ]]; then
+    C_RESET=$'\033[0m'; C_RED=$'\033[31m'; C_YELLOW=$'\033[33m'
+else
+    C_RESET=''; C_RED=''; C_YELLOW=''
+fi
+warn() { printf '%s%s%s\n' "$C_YELLOW" "$*" "$C_RESET" >&2; }
+die() { printf '%s%s%s\n' "$C_RED" "$*" "$C_RESET" >&2; exit 1; }
+
+require_tools() {
+    local t
+    for t in "$@"; do command -v "$t" >/dev/null || die "$t not on PATH"; done
+}
+
+# For hostnames that only resolve over the VPN.
+require_internal_dns() {
+    local host="$1"
+    if command -v getent >/dev/null; then
+        getent hosts "$host" >/dev/null 2>&1
+    else
+        dscacheutil -q host -a name "$host" 2>/dev/null | grep -q ip_address
+    fi || die "cannot resolve $host: connect the VPN."
+}
+
+DEFAULT_URL="https://docmosis.aat.platform.hmcts.net"
+# rpa-aat holds the platform's AAT access key; teams copy it into their own vaults.
+DEFAULT_VAULT="${DOCMOSIS_VAULT:-rpa-aat}"
+DEFAULT_SECRET="${DOCMOSIS_SECRET:-docmosis-access-key}"
+DEFAULT_CONTEXT="cft-preview-00-aks"
+PREVIEW_NAMESPACE="docmosis"
+PREVIEW_RELEASE_PREFIX="docmosis-docmosis-unified-pr-"
+POD_TEMPLATES="/home/docmosis/templates"
+
+# A local Docmosis is the image every environment runs, with a licence key that is
+# rotated monthly in Key Vault. The site name is part of the licence.
+LOCAL_IMAGE="hmctsprod.azurecr.io/docmosis/docmosis-unified:latest"
+LOCAL_CONTAINER="docmosis-local"
+LOCAL_HTTP_PORT="${DOCMOSIS_LOCAL_PORT:-18087}"
+LOCAL_LICENCE_VAULT="${DOCMOSIS_LICENCE_VAULT:-dtsse-aat}"
+LOCAL_LICENCE_SECRET="${DOCMOSIS_LICENCE_SECRET:-docmosis-tornado-trial-key}"
+LOCAL_LICENCE_SITE="${DOCMOSIS_LICENCE_SITE:-Free Trial Tornado}"
+# The image's JAVA_TOOL_OPTIONS less its App Insights agent, which stops the render service
+# starting when the AKS-mounted connection string isn't there.
+LOCAL_JAVA_OPTIONS="-XX:InitialRAMPercentage=20.0 -XX:MaxRAMPercentage=65.0 -XX:MinRAMPercentage=10.0 -XX:+UseParallelGC -Xms128M"
+# Templates are copied into the container rather than bind-mounted: the Docker daemon can
+# run on another host (a devcontainer or sandbox), where a bind mount comes up empty.
+LOCAL_STATE="${DOCMOSIS_LOCAL_STATE:-$HOME/.local/state/docmosis-local}"
+
+usage() {
+    cat >&2 <<'EOF'
+usage: docmosis <command> [args]
+
+Template files (no network):
+  text <template>                the template's text, one paragraph per line; a table row
+                                 is one line with its cells separated by " | "
+  fields <template>              the Docmosis instructions in document order, indented by
+                                 block, with the paragraph and table cell of each
+  tree <template>                the instructions as a JSON tree, with the data names
+                                 each one reads
+  check <template>               problems Docmosis rejects or mis-renders: unbalanced or
+                                 crossed blocks, "<<" without ">>", instructions split
+                                 across differently formatted runs; exits 1 on errors
+  diff <old> <new>               instructions and blocks added, removed and moved
+  unpack <file.docx> <dir>       extract a template for editing; the document, header and
+                                 footer XML get one table, row, cell or paragraph per line
+  pack <dir> <file.docx>         zip an unpacked folder back into a .docx; unchanged parts
+                                 keep their original bytes
+  <template> is a .docx file or a folder made by unpack.
+
+Docmosis instance:
+  status                         check the instance answers
+  probe                          which REST endpoints the instance offers
+  structure <template-name>      the instance's view of a stored template's fields
+  sample <template-name>         the instance's placeholder data for a stored template,
+                                 the data the hmcts/docmosis PR check renders with
+  render <template-name> <data.json> [--out file] [--dev] [--format pdf|docx]
+                                 render a stored template with your data; --dev renders
+                                 field errors into the document instead of failing
+  put <ns>/<pod-or-release> <file.docx>
+                                 copy a template into a hmcts/docmosis preview PR pod
+                                 (docmosis-docmosis-unified-pr-<n> only) to render it there
+
+Local Docmosis (Docker; the same image as every environment, licence key from Key Vault):
+  local start                    pull the image, and start it on 127.0.0.1:18087 of the Docker
+                                 host (DOCMOSIS_LOCAL_PORT); recreates a container that is
+                                 running an older image
+  local render <file.docx> <data.json> [--out file] [--dev] [--format pdf|docx]
+                                 render a local template file, starting Docmosis if needed;
+                                 --format docx gives a .docx that text and diff can read.
+                                 Each render copies the file in under a new name and
+                                 deletes it afterwards, so an edited file is never stale
+  local status | stop            whether it's running and how it is reached; stop and
+                                 remove the container
+  The script calls it on 127.0.0.1, host.docker.internal or a tcp:// DOCKER_HOST, whichever
+  answers, else through docker exec; DOCMOSIS_LOCAL_ENDPOINT=<url>|exec forces one.
+  The licence key is read from Key Vault dtsse-aat / docmosis-tornado-trial-key
+  (DOCMOSIS_LICENCE_VAULT, DOCMOSIS_LICENCE_SECRET; site DOCMOSIS_LICENCE_SITE), and is
+  rotated monthly: after a rotation, run local stop then local start.
+
+Instance options (or set DOCMOSIS_URL):
+  --url URL                      default https://docmosis.aat.platform.hmcts.net (VPN);
+                                 AAT has no upload endpoint, so it only renders the
+                                 templates in its own store
+  --vault NAME --secret NAME     where the access key is read from (DOCMOSIS_VAULT,
+                                 DOCMOSIS_SECRET; default rpa-aat / docmosis-access-key)
+  --preview <n>                  use hmcts/docmosis PR <n>'s preview release: port-forward
+                                 to its pod and read the access key from it
+  --port-forward <ns>/<svc>      use a cluster service through kubectl port-forward
+  --pod-key <ns>/<pod-or-release>
+                                 read the access key from a pod's DOCMOSIS_ACCESSKEY; a
+                                 release name finds its pod by app.kubernetes.io/instance
+  --context NAME                 kubectl context for the cluster options and put
+                                 (default cft-preview-00-aks)
+  --api-path PATH                REST path prefix: /rs for --url (AAT's ingress), /api
+                                 through a port-forward, where /rs is the web console
+
+Template names are the file names in hmcts/docmosis, e.g. CV-PCS-CLM-ENG-Claim-Pack.docx.
+
+Examples:
+  docmosis unpack CV-PCS-CLM-ENG-Claim-Pack-V2.docx /tmp/v2 && $EDITOR /tmp/v2/word/document.xml
+  docmosis pack /tmp/v2 CV-PCS-CLM-ENG-Claim-Pack-V2.docx && docmosis check CV-PCS-CLM-ENG-Claim-Pack-V2.docx
+  docmosis render CV-PCS-CLM-ENG-Claim-Pack.docx payload.json --dev
+  docmosis put docmosis/docmosis-docmosis-unified-pr-123 CV-PCS-CLM-ENG-Claim-Pack-V2.docx
+  docmosis render CV-PCS-CLM-ENG-Claim-Pack-V2.docx payload.json --preview 123
+  docmosis local render Templates/AAT/CV-PCS-CLM-ENG-Claim-Pack-V2.docx payload.json
+EOF
+}
+
+URL="${DOCMOSIS_URL:-$DEFAULT_URL}"
+VAULT="$DEFAULT_VAULT"
+SECRET="$DEFAULT_SECRET"
+KCTX="$DEFAULT_CONTEXT"
+FORWARD=""
+POD_KEY=""
+PREVIEW=""
+ARGS=()
+OUT=""
+DEV=false
+FORMAT=pdf
+API_PATH=""
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        -h|--help) usage; exit 0 ;;
+        --url) URL="$2"; shift 2 ;;
+        --vault) VAULT="$2"; shift 2 ;;
+        --secret) SECRET="$2"; shift 2 ;;
+        --context) KCTX="$2"; shift 2 ;;
+        --port-forward) FORWARD="$2"; shift 2 ;;
+        --pod-key) POD_KEY="$2"; shift 2 ;;
+        --preview) PREVIEW="$2"; shift 2 ;;
+        --out) OUT="$2"; shift 2 ;;
+        --dev) DEV=true; shift ;;
+        --format) FORMAT="$2"; shift 2 ;;
+        --api-path) API_PATH="$2"; shift 2 ;;
+        *) ARGS+=("$1"); shift ;;
+    esac
+done
+set -- "${ARGS[@]+"${ARGS[@]}"}"
+COMMAND="${1:-}"
+[[ -n "$COMMAND" ]] || { usage; exit 2; }
+shift
+[[ "$FORMAT" == pdf || "$FORMAT" == docx ]] || die "--format is pdf or docx"
+
+if [[ -n "$PREVIEW" ]]; then
+    [[ "$PREVIEW" =~ ^[0-9]+$ ]] || die "--preview takes a hmcts/docmosis PR number"
+    [[ -z "$FORWARD" && -z "$POD_KEY" ]] || die "--preview replaces --port-forward and --pod-key"
+    POD_KEY="$PREVIEW_NAMESPACE/$PREVIEW_RELEASE_PREFIX$PREVIEW"
+fi
+
+docx() { node "$LIB/docx.mjs" "$@"; }
+
+# A rendered PDF starts with %PDF, and a .docx (a zip) with PK.
+is_output() {
+    case "$FORMAT" in
+        docx) [[ "$(head -c 2 "$1" 2>/dev/null)" == PK ]] ;;
+        *) [[ "$(head -c 4 "$1" 2>/dev/null)" == %PDF ]] ;;
+    esac
+}
+k() { kubectl --context "$KCTX" "$@"; }
+
+# <ns>/<pod-or-release> -> pod name. A release is found the way hmcts/docmosis's
+# scripts/validate-pr-templates.sh finds it.
+resolve_pod() {
+    local ns="${1%%/*}" target="${1#*/}" pod
+    [[ "$1" == */* && -n "$ns" && -n "$target" ]] || die "expected <namespace>/<pod-or-release>, got '$1'"
+    if k get pod -n "$ns" "$target" >/dev/null 2>&1; then
+        pod="$target"
+    else
+        pod="$(k get pods -n "$ns" -l "app.kubernetes.io/instance=$target,!job-name" \
+            -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)"
+    fi
+    [[ -n "$pod" ]] || die "no pod '$target', or pod of release '$target', in namespace $ns (context $KCTX)"
+    printf '%s\n' "$pod"
+}
+
+PF_PID=""
+PF_LOG=""
+LOCAL_TEMPLATE=""
+LOCAL_EXEC_FILES=""
+LOCAL_LOCK=""
+cleanup() {
+    [[ -z "$LOCAL_LOCK" ]] || rm -rf "$LOCAL_LOCK"
+    [[ -z "$PF_PID" ]] || kill "$PF_PID" 2>/dev/null || true
+    [[ -z "$PF_LOG" ]] || rm -f "$PF_LOG"
+    if [[ -n "$LOCAL_TEMPLATE$LOCAL_EXEC_FILES" ]]; then
+        docker exec -u 0 "$LOCAL_CONTAINER" sh -c 'rm -f "$1" "$2".req "$2".out "$2".tmp "$2".code' _ \
+            "$POD_TEMPLATES/$LOCAL_TEMPLATE" "${LOCAL_EXEC_FILES:-/nonexistent}" >/dev/null 2>&1 || true
+    fi
+}
+trap cleanup EXIT
+
+# kubectl runs directly in the background, so PF_PID is kubectl itself and cleanup stops it.
+# Local port 0 has kubectl choose a free port, so a forward left over on a fixed port can't
+# answer in its place.
+forward() {
+    local ns="$1" resource="$2" remote="$3" port=""
+    require_tools kubectl
+    PF_LOG="$(mktemp)"
+    kubectl --context "$KCTX" port-forward -n "$ns" "$resource" ":$remote" >"$PF_LOG" 2>&1 &
+    PF_PID=$!
+    for _ in $(seq 1 60); do
+        kill -0 "$PF_PID" 2>/dev/null || die "kubectl port-forward to $ns/$resource failed (context $KCTX): $(tail -3 "$PF_LOG")"
+        port="$(sed -n 's/^Forwarding from 127\.0\.0\.1:\([0-9][0-9]*\) .*/\1/p' "$PF_LOG" | sed -n 1p)"
+        [[ -n "$port" ]] && curl -s -o /dev/null -m 5 "http://127.0.0.1:$port/" && break
+        port=""
+        sleep 0.5
+    done
+    [[ -n "$port" ]] || die "kubectl port-forward to $ns/$resource didn't answer within 30 seconds"
+    kill -0 "$PF_PID" 2>/dev/null || die "kubectl port-forward to $ns/$resource exited"
+    URL="http://127.0.0.1:$port"
+    API_PATH="${API_PATH:-/api}"
+}
+
+connect() {
+    local pod="" host
+    require_tools jq curl
+    if [[ -z "$PREVIEW$FORWARD" ]]; then
+        host="${URL#*://}"; host="${host%%[:/]*}"
+        [[ "$host" != *.platform.hmcts.net && "$host" != *.internal ]] || require_internal_dns "$host"
+    fi
+    if [[ -n "$POD_KEY" ]]; then
+        require_tools kubectl
+        pod="$(resolve_pod "$POD_KEY")"
+    fi
+    if [[ -n "$PREVIEW" ]]; then
+        forward "$PREVIEW_NAMESPACE" "pod/$pod" 8080
+    elif [[ -n "$FORWARD" ]]; then
+        forward "${FORWARD%%/*}" "svc/${FORWARD#*/}" 80
+    fi
+    if [[ -n "$pod" ]]; then
+        ACCESS_KEY="$(k exec -n "${POD_KEY%%/*}" "$pod" -- printenv DOCMOSIS_ACCESSKEY 2>/dev/null)" \
+            || die "couldn't read DOCMOSIS_ACCESSKEY from pod $pod"
+    else
+        require_tools az
+        ACCESS_KEY="$(az keyvault secret show --vault-name "$VAULT" --name "$SECRET" --query value -o tsv)" \
+            || die "couldn't read $SECRET from $VAULT"
+    fi
+    [[ -n "$ACCESS_KEY" ]] || die "the access key is empty"
+    API_PATH="${API_PATH:-/rs}"
+}
+
+# POSTs the JSON body with the access key added. jq reads the key from its environment and
+# curl reads the body from stdin, so the key is never in a command's arguments.
+api() {
+    local path="$1" body="$2"
+    ACCESS_KEY="$ACCESS_KEY" jq -c '. + {accessKey: env.ACCESS_KEY}' <<<"$body" \
+        | curl -sS -m 120 -X POST -H 'Content-Type: application/json' --data-binary @- "${@:3}" "$URL$path"
+}
+
+# Renders into the file $2 and prints the HTTP status, or curl's error and 000.
+render_to() {
+    { api "$API_PATH/render" "$1" -w '%{stderr}%{http_code}' >"$2"; } 2>&1
+}
+
+render_failed() {
+    printf 'render failed (HTTP %s):\n' "$1" >&2
+    cat "$2" >&2; echo >&2
+    rm -f "$2"
+    exit 1
+}
+
+api_json() {
+    local reply code body
+    reply="$(api "$1" "$2" -w '\n%{http_code}')"
+    code="${reply##*$'\n'}"
+    body="${reply%$'\n'*}"
+    if ! jq -e . >/dev/null 2>&1 <<<"$body"; then
+        printf 'HTTP %s, not JSON:\n%s\n' "$code" "$(head -c 2000 <<<"$body")" >&2
+        exit 1
+    fi
+    jq "$3" <<<"$body"
+}
+
+# Copying into a shared Docmosis would change what other teams render, so put only
+# accepts a preview PR release's pod, checked against the pod's own label, and only
+# for an open hmcts/docmosis PR the current GitHub user opened, so it never writes
+# into someone else's preview.
+put_template() {
+    local target="$1" file="$2" pod instance ns="${1%%/*}"
+    [[ -f "$file" && "$file" == *.docx ]] || die "put needs a .docx file"
+    require_tools kubectl gh
+    [[ "$KCTX" == *preview* ]] || die "put only works on a preview cluster; --context is $KCTX"
+    pod="$(resolve_pod "$target")"
+    instance="$(k get pod -n "$ns" "$pod" -o jsonpath='{.metadata.labels.app\.kubernetes\.io/instance}')"
+    [[ "$instance" =~ ^${PREVIEW_RELEASE_PREFIX}[0-9]+$ ]] \
+        || die "refusing: pod $pod belongs to release '${instance:-none}', not a ${PREVIEW_RELEASE_PREFIX}<n> preview release"
+    local pr="${instance##*-}" me owner
+    me="$(gh api user --jq .login)" || die "put needs gh, signed in, to check who opened the PR"
+    owner="$(gh pr view "$pr" -R hmcts/docmosis --json author,state --jq 'select(.state=="OPEN") | .author.login')" \
+        || die "couldn't read hmcts/docmosis PR #$pr"
+    [[ "$owner" == "$me" ]] \
+        || die "refusing: hmcts/docmosis PR #$pr is not an open PR opened by you ($me); its author is ${owner:-unknown, or it is closed}"
+    k cp "$file" "$ns/$pod:$POD_TEMPLATES/$(basename "$file")"
+    printf 'copied %s to %s:%s/ (release %s)\n' "$(basename "$file")" "$pod" "$POD_TEMPLATES" "$instance"
+    printf 'render it with: docmosis render %s <data.json> --preview %s\n' "$(basename "$file")" "${instance##*-}"
+}
+
+
+local_running() {
+    [[ "$(docker inspect -f '{{.State.Running}}' "$LOCAL_CONTAINER" 2>/dev/null)" == true ]]
+}
+
+local_image_id() { docker image inspect -f '{{.Id}}' "$LOCAL_IMAGE" 2>/dev/null || true; }
+
+# A throwaway client config, so the registry login doesn't depend on the user's credential
+# helper. docker pull is quick when the image hasn't changed.
+local_pull() {
+    local cfg rc=0
+    cfg="$(mktemp -d)"
+    printf '{}\n' >"$cfg/config.json"
+    DOCKER_CONFIG="$cfg" az acr login --name hmctsprod >/dev/null 2>&1 \
+        && DOCKER_CONFIG="$cfg" docker pull -q "$LOCAL_IMAGE" >/dev/null || rc=1
+    rm -rf "$cfg"
+    return "$rc"
+}
+
+local_answers() { curl -s -m 3 "$1/api/status" 2>/dev/null | jq -e 'has("ready")' >/dev/null 2>&1; }
+
+# The port is published on 127.0.0.1 of the Docker daemon's host, which isn't always this
+# machine's loopback. The first address that answers is kept in the state file until the
+# container is replaced; if none does, requests go through docker exec.
+local_endpoint() {
+    local saved="" host
+    if [[ -n "${DOCMOSIS_LOCAL_ENDPOINT:-}" ]]; then
+        printf '%s\n' "$DOCMOSIS_LOCAL_ENDPOINT"
+        return
+    fi
+    [[ ! -f "$LOCAL_STATE/endpoint" ]] || saved="$(cat "$LOCAL_STATE/endpoint")"
+    # An address that answers is kept. The docker exec fallback is not: it is much slower, and
+    # chosen at start-up it can just mean the published port wasn't reachable yet.
+    if [[ -n "$saved" && "$saved" != exec ]] && local_answers "$saved"; then
+        printf '%s\n' "$saved"
+        return
+    fi
+    local candidates=(127.0.0.1 host.docker.internal)
+    if [[ "${DOCKER_HOST:-}" == tcp://* ]]; then
+        host="${DOCKER_HOST#tcp://}"; host="${host%%/*}"; candidates+=("${host%:*}")
+    fi
+    saved="exec"
+    for host in "${candidates[@]}"; do
+        if local_answers "http://$host:$LOCAL_HTTP_PORT"; then
+            saved="http://$host:$LOCAL_HTTP_PORT"
+            break
+        fi
+    done
+    mkdir -p "$LOCAL_STATE"
+    printf '%s\n' "$saved" >"$LOCAL_STATE/endpoint.$$"
+    mv -f "$LOCAL_STATE/endpoint.$$" "$LOCAL_STATE/endpoint"
+    printf '%s\n' "$saved"
+}
+
+local_describe() {
+    if [[ "$1" == exec ]]; then echo "reached through docker exec $LOCAL_CONTAINER"; else echo "on $1"; fi
+}
+
+# The access key the running container was started with, which is the one it accepts.
+local_access_key() {
+    { docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' "$LOCAL_CONTAINER" 2>/dev/null || true; } \
+        | sed -n 's/^DOCMOSIS_ACCESSKEY=//p' | sed -n 1p
+}
+
+local_connect() {
+    URL="$(local_endpoint)"
+    API_PATH=/api
+    ACCESS_KEY="$(local_access_key)"
+    [[ -n "$ACCESS_KEY" ]] || die "$LOCAL_CONTAINER has no DOCMOSIS_ACCESSKEY; run docmosis local stop, then local render or local start"
+}
+
+# Starting, replacing and stopping the container happen under a lock, so concurrent renders
+# don't each replace it. The lock is a directory, as macOS has no flock. Its owner file holds
+# the holder's host and PID: a lock whose holder on this host has exited, or one older than
+# 15 minutes (a holder on another host, or one that died before writing the owner), is
+# taken over.
+local_lock() {
+    local lock="$LOCAL_STATE/start.lock" owner pid said=false
+    mkdir -p "$LOCAL_STATE"
+    for _ in $(seq 1 900); do
+        if mkdir "$lock" 2>/dev/null; then
+            LOCAL_LOCK="$lock"
+            printf '%s %s\n' "$(uname -n)" "$$" >"$lock/owner"
+            return
+        fi
+        owner="$(cat "$lock/owner" 2>/dev/null || true)"
+        pid="${owner##* }"
+        if { [[ -n "$owner" && "${owner% *}" == "$(uname -n)" ]] && ! kill -0 "$pid" 2>/dev/null; } \
+            || [[ -n "$(find "$lock" -maxdepth 0 -mmin +15 2>/dev/null)" ]]; then
+            rm -rf "$lock"
+            continue
+        fi
+        if [[ "$said" == false ]]; then
+            printf 'waiting for another docmosis process to finish starting or stopping %s\n' "$LOCAL_CONTAINER" >&2
+            said=true
+        fi
+        sleep 1
+    done
+    die "another docmosis process has held $lock for 15 minutes; if none is running, delete it"
+}
+
+local_unlock() {
+    [[ -z "$LOCAL_LOCK" ]] || rm -rf "$LOCAL_LOCK"
+    LOCAL_LOCK=""
+}
+
+# render_to, from inside the container. Each docker call is short, because a Docker socket
+# proxy can cut an attached docker exec soon after its input ends (socat's default is half a
+# second), losing the output: the request is streamed in, curl runs detached, and the result
+# is copied back out with docker cp. The files are named by LOCAL_EXEC_FILES.
+exec_render() {
+    local body="$1" out="$2" id="$LOCAL_EXEC_FILES" code=""
+    ACCESS_KEY="$ACCESS_KEY" jq -c '. + {accessKey: env.ACCESS_KEY}' <<<"$body" \
+        | docker exec -i "$LOCAL_CONTAINER" sh -c 'umask 077; rm -f "$1.out" "$1.code"; cat >"$1.req"' _ "$id"
+    docker exec -d "$LOCAL_CONTAINER" sh -c \
+        'curl -s -m 120 -H "Content-Type: application/json" --data-binary @"$1.req" -o "$1.out" -w "%{http_code}" http://127.0.0.1:8080/api/render >"$1.tmp"; rm -f "$1.req"; mv "$1.tmp" "$1.code"' _ "$id"
+    for _ in $(seq 1 400); do
+        docker exec "$LOCAL_CONTAINER" test -f "$id.code" && break
+        sleep 0.3
+    done
+    code="$(docker cp "$LOCAL_CONTAINER:$id.code" - 2>/dev/null | tar -xOf - 2>/dev/null)" || true
+    docker cp "$LOCAL_CONTAINER:$id.out" - 2>/dev/null | tar -xOf - >"$out" 2>/dev/null || true
+    printf '%s\n' "${code:-000}"
+}
+
+local_start() {
+    require_tools docker az jq curl openssl
+    local_lock
+    local_start_locked
+    local_unlock
+}
+
+local_start_locked() {
+    if ! local_pull; then
+        [[ -n "$(local_image_id)" ]] || die "couldn't log in to hmctsprod and pull $LOCAL_IMAGE"
+        warn "couldn't check hmctsprod for a newer $LOCAL_IMAGE; using the copy already pulled"
+    fi
+    if local_running; then
+        if [[ -z "$(local_access_key)" ]]; then
+            printf '%s is running without DOCMOSIS_ACCESSKEY; recreating it\n' "$LOCAL_CONTAINER"
+        elif [[ "$(docker inspect -f '{{.Image}}' "$LOCAL_CONTAINER")" == "$(local_image_id)" ]]; then
+            printf 'local Docmosis already running, %s\n' "$(local_describe "$(local_endpoint)")"
+            return
+        else
+            printf '%s has changed since %s started; recreating it\n' "$LOCAL_IMAGE" "$LOCAL_CONTAINER"
+        fi
+    fi
+    docker rm -f "$LOCAL_CONTAINER" >/dev/null 2>&1 || true
+    mkdir -p "$LOCAL_STATE"
+    rm -f "$LOCAL_STATE/endpoint"
+    DOCMOSIS_KEY="$(az keyvault secret show --vault-name "$LOCAL_LICENCE_VAULT" --name "$LOCAL_LICENCE_SECRET" --query value -o tsv)" \
+        || die "couldn't read the licence key $LOCAL_LICENCE_SECRET from $LOCAL_LICENCE_VAULT"
+    # Renders read the access key back from the container, so it isn't kept here. Tornado
+    # won't start without an admin console password, which is kept for signing in to it.
+    rm -f "$LOCAL_STATE/access-key"
+    [[ -f "$LOCAL_STATE/admin-password" ]] || (umask 077; openssl rand -hex 16 >"$LOCAL_STATE/admin-password")
+    # -e NAME with no value passes each secret from this command's environment, not its arguments.
+    DOCMOSIS_SITE="$LOCAL_LICENCE_SITE" DOCMOSIS_ACCESSKEY="$(openssl rand -hex 16)" DOCMOSIS_KEY="$DOCMOSIS_KEY" \
+    DOCMOSIS_ADMINPW="$(cat "$LOCAL_STATE/admin-password")" \
+        docker run -d --name "$LOCAL_CONTAINER" -p "127.0.0.1:$LOCAL_HTTP_PORT:8080" \
+            -e DOCMOSIS_KEY -e DOCMOSIS_SITE -e DOCMOSIS_ACCESSKEY -e DOCMOSIS_ADMINPW \
+            -e JAVA_TOOL_OPTIONS="$LOCAL_JAVA_OPTIONS" \
+            "$LOCAL_IMAGE" >/dev/null \
+        || die "couldn't start $LOCAL_CONTAINER"
+    # /api/ping answers before the LibreOffice converter pool is up; /api/status says when it
+    # is. It is asked from inside the container, which works wherever the port is published.
+    for _ in $(seq 1 90); do
+        if docker exec "$LOCAL_CONTAINER" curl -s -m 5 http://127.0.0.1:8080/api/status 2>/dev/null | jq -e '.ready == true' >/dev/null 2>&1; then
+            printf 'local Docmosis running, %s\n' "$(local_describe "$(local_endpoint)")"
+            return
+        fi
+        local_running || die "$LOCAL_CONTAINER exited: $(docker logs --tail 20 "$LOCAL_CONTAINER" 2>&1)"
+        sleep 2
+    done
+    die "local Docmosis wasn't ready on /api/status within 3 minutes: $(docker logs --tail 20 "$LOCAL_CONTAINER" 2>&1)"
+}
+
+sha8() {
+    if command -v sha256sum >/dev/null; then sha256sum "$1"; else shasum -a 256 "$1"; fi | cut -c1-8
+}
+
+# Docmosis keeps a template it has loaded until a scan of its folder sees the file change,
+# so each render copies the file in under a name of its own (content hash and this process)
+# and cleanup deletes it.
+local_render() {
+    local file="$1" data="$2" base out code body
+    [[ -f "$file" && "$file" == *.docx && -f "$data" ]] || die "local render needs a .docx file and a data .json file"
+    require_tools docker jq curl
+    # The check is repeated under the lock: another render may have started it meanwhile.
+    if ! local_running; then
+        require_tools az openssl
+        local_lock
+        local_running || local_start_locked
+        local_unlock
+    fi
+    local_connect
+    base="$(basename "$file")"
+    LOCAL_TEMPLATE="$(sha8 "$file")-$$-$base"
+    [[ "$URL" != exec ]] || LOCAL_EXEC_FILES="/tmp/docmosis-render-$$"
+    docker cp -q "$file" "$LOCAL_CONTAINER:$POD_TEMPLATES/$LOCAL_TEMPLATE" || die "couldn't copy $base into $LOCAL_CONTAINER"
+    out="${OUT:-${base%.*}.$FORMAT}"
+    body="$(jq -c --arg t "$LOCAL_TEMPLATE" --argjson dev "$DEV" --arg f "$FORMAT" '{templateName: $t, outputName: ("render." + $f), devMode: $dev, data: .}' "$data")"
+    # A new file is only found on Docmosis's next scan of its templates folder.
+    for _ in $(seq 1 20); do
+        if [[ "$URL" == exec ]]; then
+            code="$(exec_render "$body" "$out")" || true
+        else
+            code="$(render_to "$body" "$out")" || true
+        fi
+        if [[ "$code" == 200 ]] && is_output "$out"; then
+            printf 'rendered %s (%s bytes)\n' "$out" "$(wc -c <"$out" | tr -d " ")"
+            return
+        fi
+        grep -q 'template does not exist' "$out" 2>/dev/null || break
+        sleep 3
+    done
+    render_failed "$code" "$out"
+}
+
+case "$COMMAND" in
+    fields|check|text|tree|diff|unpack|pack) require_tools node ;;
+esac
+
+case "$COMMAND" in
+    local)
+        sub="${1:-}"; shift || true
+        case "$sub" in
+            start) local_start ;;
+            render) local_render "${1:-}" "${2:-}" ;;
+            status)
+                require_tools docker curl jq
+                if local_running; then echo "running, $(local_describe "$(local_endpoint)")"; else echo "not running"; fi ;;
+            stop)
+                require_tools docker
+                local_lock
+                rm -f "$LOCAL_STATE/endpoint"
+                if docker rm -f "$LOCAL_CONTAINER" >/dev/null 2>&1; then echo "stopped"; else echo "not running"; fi
+                local_unlock ;;
+            *) die "local takes start, render, status or stop" ;;
+        esac ;;
+    fields|check|text|tree)
+        [[ -e "${1:-}" ]] || die "$COMMAND needs a .docx file or an unpacked folder"
+        docx "$COMMAND" "$1" ;;
+    diff)
+        [[ -e "${1:-}" && -e "${2:-}" ]] || die "diff needs two templates"
+        docx diff "$1" "$2" ;;
+    unpack)
+        [[ -f "${1:-}" && -n "${2:-}" ]] || die "unpack needs a .docx file and a folder"
+        docx unpack "$1" "$2" ;;
+    pack)
+        [[ -d "${1:-}" && -n "${2:-}" ]] || die "pack needs a folder and a .docx file"
+        docx pack "$1" "$2" ;;
+    put)
+        [[ -n "${1:-}" && -n "${2:-}" ]] || die "put needs <ns>/<pod-or-release> and a .docx file"
+        put_template "$1" "$2" ;;
+    status)
+        connect
+        curl -sS -m 20 -o /dev/null -w "%{http_code} $URL\n" "$URL$API_PATH/status" ;;
+    probe)
+        connect
+        for p in status ping listTemplates getTemplateStructure getSampleData render uploadTemplate addTemplate; do
+            code="$(api "$API_PATH/$p" '{}' -s -m 20 -o /dev/null -w '%{http_code}' 2>/dev/null || true)"
+            printf '  %-22s %s\n' "$API_PATH/$p" "$code"
+        done ;;
+    structure)
+        [[ -n "${1:-}" ]] || die "structure needs a template name"
+        connect
+        api_json "$API_PATH/getTemplateStructure" "$(jq -cn --arg t "$1" '{templateName: $t}')" . ;;
+    sample)
+        [[ -n "${1:-}" ]] || die "sample needs a template name"
+        connect
+        api_json "$API_PATH/getSampleData" "$(jq -cn --arg t "$1" '{templateName: $t, format: "json", stringify: false}')" \
+            '.templateSampleData // .' ;;
+    render)
+        [[ -n "${1:-}" && -f "${2:-}" ]] || die "render needs a template name and a data .json file"
+        connect
+        out="${OUT:-$(basename "${1%.*}").$FORMAT}"
+        body="$(jq -c --arg t "$1" --argjson dev "$DEV" --arg f "$FORMAT" \
+            '{templateName: $t, outputName: ("render." + $f), devMode: $dev, data: .}' "$2")"
+        code="$(render_to "$body" "$out")" || true
+        if [[ "$code" != 200 ]] || ! is_output "$out"; then render_failed "$code" "$out"; fi
+        printf 'rendered %s (%s bytes)\n' "$out" "$(wc -c <"$out" | tr -d " ")" ;;
+    *) usage; exit 2 ;;
+esac

@@ -1,0 +1,9 @@
+**
+!dist/extension.js
+!dist/webview.js
+!dist/webview.css
+!dist/pdf.worker.min.mjs
+!cli/bin/docmosis
+!cli/lib/docx.mjs
+!package.json
+!README.md

@@ -1,0 +1,45 @@
+name: Release
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - bin/**
+      - lib/**
+      - vscode/**
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: vscode/package-lock.json
+      - run: node --test test/*.test.mjs
+      - name: Build the extension
+        working-directory: vscode
+        run: |
+          npm ci
+          npm test
+          npm run package
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          version="$(node -p "require('./vscode/package.json').version")"
+          tag="v${version}-${GITHUB_RUN_NUMBER}-${GITHUB_SHA::7}"
+          gh release create "$tag" vscode/hmcts-template-preview.vsix \
+            --target "$GITHUB_SHA" \
+            --title "$tag" \
+            --notes "HMCTS Template Preview ${version}, built from ${GITHUB_SHA}." \
+            --latest

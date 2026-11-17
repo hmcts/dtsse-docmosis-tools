@@ -1,0 +1,91 @@
+{
+  "name": "hmcts-template-preview",
+  "displayName": "HMCTS Template Preview",
+  "description": "Preview Docmosis .docx templates: detects the template's variables, builds an input form and renders the PDF through a local Docmosis.",
+  "version": "0.1.0",
+  "publisher": "hmcts",
+  "private": true,
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git@github.com:hmcts/dtsse-docmosis-tools.git",
+    "directory": "vscode"
+  },
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "main": "./dist/extension.js",
+  "activationEvents": [
+    "onCustomEditor:hmctsTemplatePreview.docxPreview",
+    "onCommand:hmctsTemplatePreview.preview"
+  ],
+  "contributes": {
+    "customEditors": [
+      {
+        "viewType": "hmctsTemplatePreview.docxPreview",
+        "displayName": "HMCTS Template Preview",
+        "selector": [
+          {
+            "filenamePattern": "*.docx"
+          }
+        ],
+        "priority": "option"
+      }
+    ],
+    "commands": [
+      {
+        "command": "hmctsTemplatePreview.preview",
+        "title": "Preview Docmosis template",
+        "category": "HMCTS Template Preview"
+      }
+    ],
+    "menus": {
+      "commandPalette": [
+        {
+          "command": "hmctsTemplatePreview.preview",
+          "when": "resourceExtname == .docx || activeCustomEditorId == hmctsTemplatePreview.docxPreview"
+        }
+      ],
+      "explorer/context": [
+        {
+          "command": "hmctsTemplatePreview.preview",
+          "when": "resourceExtname == .docx",
+          "group": "navigation@50"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "HMCTS Template Preview",
+      "properties": {
+        "hmctsTemplatePreview.docmosisCli": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Path to the `docmosis` CLI script. Leave empty to use the CLI bundled with the extension. `${workspaceFolder}` is replaced by the workspace folder. The extension also loads the template library from `../lib/docx.mjs` relative to the script, as in a dtsse-docmosis-tools checkout (`bin/docmosis`, `lib/docx.mjs`)."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "npm run typecheck && node esbuild.mjs",
+    "watch": "node esbuild.mjs --watch",
+    "test": "vitest run",
+    "test:integration": "npm run build && xvfb-run -a node test/integration/runTest.mjs",
+    "package": "npm run build && vsce package --no-dependencies --skip-license --out hmcts-template-preview.vsix",
+    "vscode:prepublish": "npm run build"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "@types/vscode": "~1.90.0",
+    "@vscode/test-electron": "^2.5.2",
+    "@vscode/vsce": "^3.6.0",
+    "esbuild": "^0.25.0",
+    "fflate": "^0.8.2",
+    "pdfjs-dist": "^5.4.0",
+    "typescript": "^5.9.0",
+    "vitest": "^3.2.0"
+  }
+}
