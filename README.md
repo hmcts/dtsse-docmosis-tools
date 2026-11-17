@@ -1,6 +1,6 @@
 # dtsse-docmosis-tools
 
-Tools for reading, editing, checking and rendering the Docmosis `.docx` templates in [hmcts/docmosis](https://github.com/hmcts/docmosis):
+Tools for reading, editing, checking and rendering the Docmosis `.docx` templates in [hmcts/rdo-docmosis](https://github.com/hmcts/rdo-docmosis):
 
 - `bin/docmosis`: a CLI that lists a template's fields and blocks, finds broken conditionals and repeats, unpacks a template to XML and packs it back, diffs two versions, and renders a template on a local Docmosis in Docker, on AAT or on a hmcts/docmosis preview PR.
 - `lib/docx.mjs`: the template library the CLI uses, importable as an ES module.

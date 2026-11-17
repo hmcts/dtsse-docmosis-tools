@@ -3,7 +3,7 @@
 #
 # Usage: docmosis <command> [args]   (docmosis --help for detail)
 #
-# Templates live in hmcts/docmosis under Templates/<Base|AAT|...>/. Rendering uses a
+# Templates live in hmcts/rdo-docmosis under Templates/<Base|AAT|...>/. Rendering uses a
 # Docmosis Tornado instance's REST API. The access key is read from Key Vault, or from a
 # cluster pod's environment, by this script and never printed.
 # Background: https://github.com/hmcts/cft-workspace/blob/master/docs/how-to/edit-a-docmosis-template.md
@@ -160,7 +160,7 @@ Instance options (or set DOCMOSIS_URL):
   --api-path PATH                REST path prefix: /rs for --url (AAT's ingress), /api
                                  through a port-forward, where /rs is the web console
 
-Template names are the file names in hmcts/docmosis, e.g. CV-PCS-CLM-ENG-Claim-Pack.docx.
+Template names are the file names in hmcts/rdo-docmosis, e.g. CV-PCS-CLM-ENG-Claim-Pack.docx.
 
 Examples:
   docmosis unpack CV-PCS-CLM-ENG-Claim-Pack-V2.docx /tmp/v2 && $EDITOR /tmp/v2/word/document.xml
