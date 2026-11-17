@@ -26,6 +26,7 @@ export const stub = {
   settings: {} as Record<string, unknown>,
   workspaceRoot: '/',
   errors: [] as string[],
+  configListeners: [] as Array<(event: { affectsConfiguration(section: string): boolean }) => unknown>,
   openDialog: (): Promise<Uri[] | undefined> => Promise.resolve(undefined),
 };
 
@@ -35,6 +36,10 @@ export const workspace = {
   },
   getWorkspaceFolder: () => ({ uri: Uri.file(stub.workspaceRoot) }),
   getConfiguration: () => ({ get: <T>(key: string, fallback: T): T => (stub.settings[key] as T) ?? fallback }),
+  onDidChangeConfiguration: (listener: (typeof stub.configListeners)[number]) => {
+    stub.configListeners.push(listener);
+    return disposable;
+  },
   createFileSystemWatcher: () => ({ ...disposable, onDidChange: () => disposable, onDidCreate: () => disposable }),
 };
 
@@ -44,9 +49,30 @@ export const window = {
     return Promise.resolve(undefined);
   },
   showOpenDialog: () => stub.openDialog(),
+  createOutputChannel: () => ({ ...disposable, appendLine: () => undefined }),
+  registerCustomEditorProvider: () => disposable,
 };
 
-export const commands = { executeCommand: () => Promise.resolve(undefined) };
+export const commands = {
+  executeCommand: () => Promise.resolve(undefined),
+  registerCommand: () => disposable,
+};
+
+/** An environment variable collection that records what the extension asked for. */
+export class FakeEnvCollection {
+  description: string | undefined;
+  readonly entries = new Map<string, { type: 'prepend' | 'replace'; value: string }>();
+  prepend(name: string, value: string): void {
+    this.entries.set(name, { type: 'prepend', value });
+  }
+  replace(name: string, value: string): void {
+    this.entries.set(name, { type: 'replace', value });
+  }
+  clear(): void {
+    this.entries.clear();
+    this.description = undefined;
+  }
+}
 
 /** A webview panel that records what the host posts and lets a test send it messages. */
 export class FakePanel {

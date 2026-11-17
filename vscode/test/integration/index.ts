@@ -30,6 +30,22 @@ export async function run(): Promise<void> {
   await extension.activate();
   assert.ok((await vscode.commands.getCommands(true)).includes('hmctsTemplatePreview.preview'));
 
+  if (process.platform !== 'win32') {
+    // A terminal opened after activation sees the docmosis command, found through the extension's PATH entry.
+    const found = join(workspace, 'terminal-which.txt');
+    const terminal = vscode.window.createTerminal({
+      name: 'docmosis-check',
+      shellPath: '/bin/sh',
+      shellArgs: ['-c', `command -v docmosis > '${found}'; docmosis --help 2>> '${found}'; echo "$DOCMOSIS_VSCODE_NODE" >> '${found}'`],
+    });
+    await until(() => existsSync(found) && readFileSync(found, 'utf8').includes('usage: docmosis'), 'the terminal to run docmosis');
+    terminal.dispose();
+    const lines = readFileSync(found, 'utf8').split('\n');
+    assert.ok(lines[0]?.endsWith(join('dist', 'cli', 'docmosis')), `docmosis resolves into dist/cli: ${lines[0]}`);
+    assert.ok(lines.some((line) => line.length > 0 && !line.includes(' ') && line.startsWith('/')), 'DOCMOSIS_VSCODE_NODE is set');
+    console.log('integration: terminal command passed');
+  }
+
   const docx = join(workspace, 'Synthetic.docx');
   writeFileSync(
     docx,

@@ -38,9 +38,20 @@
   "main": "./dist/extension.js",
   "activationEvents": [
     "onCustomEditor:hmctsTemplatePreview.docxPreview",
-    "onCommand:hmctsTemplatePreview.preview"
+    "onCommand:hmctsTemplatePreview.preview",
+    "onStartupFinished"
   ],
   "contributes": {
+    "configuration": {
+      "title": "HMCTS Template Preview",
+      "properties": {
+        "hmctsTemplatePreview.terminalCommand": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Add the `docmosis` command to the PATH of integrated terminals. Applies to terminals opened after the change."
+        }
+      }
+    },
     "customEditors": [
       {
         "viewType": "hmctsTemplatePreview.docxPreview",
@@ -80,7 +91,7 @@
     "typecheck": "tsc --noEmit",
     "build": "npm run typecheck && node esbuild.mjs",
     "watch": "node esbuild.mjs --watch",
-    "test": "vitest run",
+    "test": "node esbuild.mjs && vitest run",
     "test:integration": "npm run build && xvfb-run -a node test/integration/runTest.mjs",
     "package": "npm run build && vsce package --no-dependencies --out hmcts-template-preview.vsix",
     "vscode:prepublish": "npm run build"
