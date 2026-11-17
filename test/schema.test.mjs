@@ -291,3 +291,64 @@ test('the error index paths are all schema paths, in every scope', () => {
     const known = new Set(schemaPaths(root).map((p) => p.path));
     for (const r of refs) for (const p of r.paths) assert.ok(known.has(p), p);
 });
+
+test('an else_ condition reads its names like a cs_ condition, and a bare else_ reads nothing', () => {
+    const elseIf = (text, dataRefs, children = []) => ({ type: 'else', text, dataRefs, children });
+    const { root, refs } = inferSchema([
+        cond('cs_isEngland', ['isEngland'], [elseIf('else_isWales', ['isWales'], [field('w')]), elseIf('else_{n = 1}', ['n']), elseIf('else_', [])]),
+    ]);
+    assert.equal(root.properties.isWales.kind, 'boolean');
+    assert.deepEqual(root.properties.isWales.controls, ['else_isWales']);
+    assert.equal(root.properties.n.kind, 'string');
+    assert.deepEqual(refs.map((r) => r.paths), [['isEngland'], ['isWales'], ['w'], ['n']]);
+});
+
+test('refs hold only schema paths', () => {
+    const { root, refs } = inferSchema([
+        cond('cs_address', ['address']),
+        field('{address.line1}', ['address.line1']),
+        rep('items', [field('{items.x}', ['items.x'])]),
+        { type: 'repeat', text: 'rs_items', dataRefs: ['items'], children: [] },
+    ]);
+    const known = new Set(schemaPaths(root).map((p) => p.path));
+    for (const r of refs) for (const p of r.paths) assert.ok(known.has(p), p);
+    assert.ok(refs.every((r) => r.paths.length > 0));
+    const objectRepeat = inferSchema([cond('cs_a', ['a']), field('a.b'), { type: 'repeat', text: 'rs_a', dataRefs: ['a'], children: [] }]);
+    assert.deepEqual(objectRepeat.refs.map((r) => r.text), ['a.b']);
+});
+
+test('$parent outside any repeat reads nothing', () => {
+    const { root, warnings, refs } = inferSchema([field('{$parent.x}', ['$parent.x']), field('y')]);
+    assert.deepEqual(Object.keys(root.properties), ['y']);
+    assert.deepEqual(warnings, ['`$parent.x` is outside any repeat, so it is always empty.']);
+    assert.deepEqual(refs.map((r) => r.paths), [['y']]);
+});
+
+test('$parent inside a repeat that has no schema path reads nothing', () => {
+    const { root, warnings } = inferSchema([
+        { type: 'repeat', text: 'rs_{foo()}', dataRefs: [], children: [
+            { type: 'repeat', text: 'rs_$root.agents', dataRefs: ['$root.agents'], children: [field('{$parent.x}', ['$parent.x'])] },
+        ] },
+    ]);
+    assert.deepEqual(Object.keys(root.properties), ['agents']);
+    assert.deepEqual(Object.keys(root.properties.agents.item.properties), []);
+    assert.deepEqual(warnings, []);
+});
+
+test('method arguments in an unnamed repeat are read in the enclosing scope, filter bodies per item', () => {
+    const sub = inferSchema([{ type: 'repeat', text: 'rs_{items.subList(0, maxRows)}', dataRefs: ['items', 'maxRows'], children: [] }]);
+    assert.deepEqual(kinds(sub.root), { items: 'array', maxRows: 'string' });
+    const mixed = inferSchema([{ type: 'repeat', text: "rs_{items.?[kind == $root.want].subList(0, max)}", dataRefs: ['items', 'kind', '$root.want', 'max'], children: [] }]);
+    assert.deepEqual(kinds(mixed.root), { items: 'array', 'items[].kind': 'string', want: 'string', max: 'string' });
+});
+
+test('a scalar read as a list warns the same way however it is spelled', () => {
+    for (const second of [field('items[0].name'), rep('items')]) {
+        const { root, warnings } = inferSchema([cond('cs_items', ['items']), second]);
+        assert.equal(root.properties.items.kind, 'array');
+        assert.deepEqual(warnings, []);
+    }
+    const { warnings } = inferSchema([field('items'), field('items[0].name')]);
+    assert.deepEqual(warnings, ['"items" is used as both string and a repeat; treated as a repeat.']);
+    assert.deepEqual(inferSchema([cond('cs_{!isBlank(items)}', ['items']), field('items[0].name')]).warnings, []);
+});

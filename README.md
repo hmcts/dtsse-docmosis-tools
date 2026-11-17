@@ -109,13 +109,15 @@ type ScalarSchema = { kind: "string" | "boolean" | "date"; controls: string[]; n
 type ObjectSchema = { kind: "object"; controls: string[]; notes: string[]; properties: Record<string, Schema> };
 type ArraySchema  = { kind: "array";  controls: string[]; notes: string[]; item: ObjectSchema };
 type Schema = ScalarSchema | ObjectSchema | ArraySchema;
-type InferResult = { root: ObjectSchema; warnings: string[] };
+type InstructionRefs = { text: string; paths: string[] };
+type InferResult = { root: ObjectSchema; warnings: string[]; refs: InstructionRefs[] };
+// templateSchema returns Omit<InferResult, "refs">
 ```
 
 - `root` is an object whose `properties` are the template's top-level names. A dotted name such as `claimant.name` becomes nested objects; `rs_` and `rr_` repeats become arrays, and what is read inside one is on `item`.
 - A name read only as text is `string`; a name that is a bare condition (`cs_isEngland`) is `boolean`; a name passed to `dateFormat` is `date`, with `inputFormat` set when the template names the format it parses the stored value with.
-- An index such as `items[0].x` reads an item of the list `items`. Every repeat, named or not (`rs_items.?[active]`), opens a scope as in dtsse-doc-render, and `$parent` is the scope around it.
-- A bare name inside a repeat is read from the current item only. `$root.x`, `$parent.x` and `$this.x` reach the root, the next repeat out (or the root) and the current item; `dataRefs` and the tree's `dataRefs` keep the prefix in the name string, and the schema places the name in the scope it resolves to.
+- An index such as `items[0].x` reads an item of the list `items`. Every repeat, named or not (`rs_items.?[active]`), opens a scope as in dtsse-doc-render, and `$parent` is the scope around it; outside any repeat there is none, so a top-level `$parent.x` is ignored with a warning.
+- A bare name inside a repeat is read from the current item only. `$root.x`, `$parent.x` and `$this.x` reach the root, the next repeat out and the current item; `dataRefs` and the tree's `dataRefs` keep the prefix in the name string, and the schema places the name in the scope it resolves to.
 - `controls` lists the blocks (for example `cs_isEngland`) whose condition reads the value. `notes` holds remarks such as that the template only tests a value for blank or null.
 - `warnings` lists names used in conflicting ways (for example as both a date and a boolean); the schema keeps the widened or dominant kind.
 - Instruction text is read for names only; expressions are not evaluated, so a name used in arithmetic or a function other than `dateFormat` and `isBlank` is reported as `string`.
