@@ -68,6 +68,7 @@ Template files (no network):
   text <template>             the template's text, one paragraph per line
   fields <template>           the Docmosis instructions in document order, indented by block
   tree <template>             the instructions as a JSON tree, with the data names each reads
+  schema <template>           the data the template expects, as JSON; see "Schema JSON"
   check <template>            problems Docmosis rejects or mis-renders; exits 1 on errors
   diff <old> <new>            instructions and blocks added, removed and moved
   unpack <file.docx> <dir>    extract a template for editing
@@ -98,6 +99,44 @@ A failed render prints the service's message and exits 1. If the host can't be r
 - It renders a subset of the Docmosis template language (see dtsse-doc-render's `docs/template-language.md`). A successful render is not proof that a template works in Docmosis.
 - The request body is limited to 50 MB.
 - `render-file` checks that the output is a real document before reporting success.
+
+## Schema JSON
+
+`docmosis schema <docx>` prints what data a template expects, inferred from its instructions across every part (body, headers, footers). Other tools consume the output, so its shape is a contract. The package exports the same inference as `inferSchema(tree)` (also at `@hmcts-cft/docmosis-tools/schema`), which takes the nodes of `instructionTree` and returns an `InferResult`. `templateSchema(template)` does the whole job for what `readTemplate` returns, flattening every part's instructions first (`templateInstructions(template)` is that flattening, if you want to call `inferSchema` yourself). `inferSchema` also returns `refs`, `{ text, paths }[]`: for each instruction, the schema paths it reads (as `schemaPaths` writes them), so a tool can map an instruction to its fields. `docmosis schema` and `templateSchema` leave it out (they call `inferSchema(tree, { refs: false })`, which returns `refs` empty), so their output stays `{ root, warnings }`. A `refs` path can name an object or a list as well as a leaf: `cs_address` reads `address`.
+
+```ts
+type ScalarSchema = { kind: "string" | "boolean" | "date"; controls: string[]; notes: string[]; inputFormat?: string };
+type ObjectSchema = { kind: "object"; controls: string[]; notes: string[]; properties: Record<string, Schema> };
+type ArraySchema  = { kind: "array";  controls: string[]; notes: string[]; item: ObjectSchema };
+type Schema = ScalarSchema | ObjectSchema | ArraySchema;
+type InstructionRefs = { text: string; paths: string[] };
+type InferResult = { root: ObjectSchema; warnings: string[]; refs: InstructionRefs[] };
+// templateSchema returns Omit<InferResult, "refs">
+```
+
+- `root` is an object whose `properties` are the template's top-level names. A dotted name such as `claimant.name` becomes nested objects; `rs_` and `rr_` repeats become arrays, and what is read inside one is on `item`.
+- A name read only as text is `string`; a name that is a bare condition (`cs_isEngland`) is `boolean`; a name passed to `dateFormat` is `date`, with `inputFormat` set when the template names the format it parses the stored value with.
+- An index such as `items[0].x` reads an item of the list `items`. Every repeat, named or not (`rs_items.?[active]`), opens a scope as in dtsse-doc-render, and `$parent` is the scope around it; outside any repeat there is none, so a top-level `$parent.x` is ignored with a warning.
+- A bare name inside a repeat is read from the current item only. A name can start with a scope prefix to read from another scope: `$root.x` is the top-level data, `$parent.x` is the repeat item (or the top level) around the current repeat, and `$this.x` is the current item, the same as the bare name. A prefix must stand alone: `$thisIsMine.x` and `$parentCase.x` are user variables, not prefixes.
+- `dataRefs` (in `fields`, `tree` and the exported `dataRefs()`) keeps the prefix in the name string, so `<<$root.caseRef>>` has `dataRefs: ["$root.caseRef"]` and `<<name>>` inside a repeat has `["name"]`. The data payload has no prefixes: its keys are the name without the prefix, looked up in the scope the prefix picks. `$root.caseRef` is the top-level key `caseRef`, even inside a repeat; `$this.role` is the key `role` of the current item. A user variable such as `$myVar` or `$myVar.name` is not data, so it appears in no `dataRefs`.
+- A repeat over something the schema can't place (a `$variable`, `$this`, or an indexed element such as `rs_items[0]`, which iterates a list inside a list) is not modelled. The names read inside it are left out of the schema and one warning per repeat lists them.
+- `controls` lists the blocks (for example `cs_isEngland`) whose condition reads the value. `notes` holds remarks such as that the template only tests a value for blank or null.
+- `warnings` lists names used in conflicting ways (for example as both a date and a boolean); the schema keeps the widened or dominant kind.
+- Instruction text is read for names only; expressions are not evaluated, so a name used in arithmetic or a function other than `dateFormat` and `isBlank` is reported as `string`.
+
+```json
+{
+  "root": {
+    "kind": "object", "controls": [], "notes": [],
+    "properties": {
+      "isEngland": { "kind": "boolean", "controls": ["cs_isEngland"], "notes": [] },
+      "issueDate": { "kind": "date", "controls": [], "notes": [], "inputFormat": "yyyy-MM-dd" },
+      "items": { "kind": "array", "controls": [], "notes": [], "item": { "kind": "object", "controls": [], "notes": [], "properties": { "label": { "kind": "string", "controls": [], "notes": [] } } } }
+    }
+  },
+  "warnings": []
+}
+```
 
 ## Tests
 

@@ -1,5 +1,4 @@
-import { normaliseQuotes, schemaPaths, type ObjectSchema } from './schema';
-import type { InstructionNode } from './tree';
+import { normaliseQuotes, schemaPaths, type InstructionRefs, type ObjectSchema } from './schema';
 
 export interface RenderFailure {
   /** What dtsse-doc-render said was wrong with the instruction. */
@@ -24,37 +23,24 @@ export function parseRenderFailures(text: string): RenderFailure[] {
   return failures;
 }
 
-export interface InstructionRefs {
-  text: string;
-  /** Data the instruction reads, as schema paths such as `items[].name`. */
-  paths: string[];
-}
-
-/** Every instruction in the template with the schema paths it reads, scoped by the repeats around it. */
-export function indexInstructions(tree: InstructionNode[], schema: ObjectSchema): InstructionRefs[] {
-  const known = new Set(schemaPaths(schema).map((p) => p.path));
-  const out: InstructionRefs[] = [];
-  const walk = (nodes: InstructionNode[], scope: string): void => {
-    for (const node of nodes) {
-      if (node.type === 'comment') continue;
-      const paths = node.dataRefs.map((ref) => (scope ? `${scope}.${ref}` : ref)).filter((p) => known.has(p));
-      if (paths.length > 0) out.push({ text: node.text, paths });
-      const named = node.type === 'repeat' ? /^(?:rs|rr)_([A-Za-z_][\w.]*)$/.exec(node.text) : null;
-      walk(node.children, named ? `${scope ? `${scope}.` : ''}${named[1]}[]` : scope);
-    }
-  };
-  walk(tree, '');
-  return out;
-}
-
 const canonical = (text: string): string => normaliseQuotes(text).replace(/\s+/g, '');
 
-/** The schema paths read by the instruction a failure names, comparing with quote style and spacing ignored. */
-export function fieldsForFailure(failure: RenderFailure, index: InstructionRefs[]): string[] {
+/**
+ * The schema paths read by the instruction a failure names, comparing with quote style and spacing ignored.
+ * The form marks inputs, which exist only for leaf values, so with the schema an object or list path (read
+ * by `cs_address`, say) becomes the leaf paths under it.
+ */
+export function fieldsForFailure(failure: RenderFailure, index: InstructionRefs[], schema?: ObjectSchema): string[] {
   const instruction = canonical(failure.instruction);
+  const leaves = schema ? schemaPaths(schema).filter((p) => p.kind !== 'array') : [];
   const found = new Set<string>();
+  const add = (path: string) => {
+    const under = leaves.filter((leaf) => leaf.path.startsWith(`${path}.`) || leaf.path.startsWith(`${path}[]`));
+    if (under.length > 0) under.forEach((leaf) => found.add(leaf.path));
+    else found.add(path);
+  };
   for (const entry of index) {
-    if (canonical(entry.text) === instruction) entry.paths.forEach((p) => found.add(p));
+    if (canonical(entry.text) === instruction) entry.paths.forEach(add);
   }
   return [...found];
 }
