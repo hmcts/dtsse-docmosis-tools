@@ -3,15 +3,11 @@
 // half of each entry's external attributes.
 import { readFileSync } from 'node:fs';
 
-const file = process.argv[2];
-if (!file) {
-  console.error('usage: check-vsix.mjs <file.vsix>');
-  process.exit(2);
-}
+const file = new URL('../hmcts-template-preview.vsix', import.meta.url);
 const zip = readFileSync(file);
 let eocd = zip.length - 22;
 while (eocd >= 0 && zip.readUInt32LE(eocd) !== 0x06054b50) eocd--;
-if (eocd < 0) throw new Error(`${file} is not a zip`);
+if (eocd < 0) throw new Error(`${file.pathname} is not a zip`);
 
 const entries = zip.readUInt16LE(eocd + 10);
 let offset = zip.readUInt32LE(eocd + 16);
@@ -28,7 +24,7 @@ for (let i = 0; i < entries; i++) {
 const entry = 'extension/dist/cli/docmosis';
 const mode = modes.get(entry);
 if (mode !== 0o755) {
-  console.error(`${file}: ${entry} has mode ${mode === undefined ? 'missing' : mode.toString(8)}, expected 755`);
+  console.error(`${file.pathname}: ${entry} has mode ${mode === undefined ? 'missing' : mode.toString(8)}, expected 755`);
   process.exit(1);
 }
-console.log(`${file}: ${entry} is 755`);
+console.log(`${file.pathname}: ${entry} is 755`);

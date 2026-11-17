@@ -56,8 +56,8 @@ export function writeStubs(context: vscode.ExtensionContext): string {
     launcher: path.join(context.extensionPath, 'dist', 'cli', 'docmosis'),
   };
   fs.mkdirSync(dir, { recursive: true });
-  fs.writeFileSync(path.join(dir, 'docmosis'), shStub(runtime), { mode: 0o755 });
-  fs.chmodSync(path.join(dir, 'docmosis'), 0o755);
+  fs.writeFileSync(path.join(dir, 'docmosis'), shStub(runtime), { mode: 0o700 });
+  fs.chmodSync(path.join(dir, 'docmosis'), 0o700);
   fs.writeFileSync(path.join(dir, 'docmosis.cmd'), cmdStub(runtime));
   return dir;
 }

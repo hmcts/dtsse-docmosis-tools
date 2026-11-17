@@ -42,7 +42,7 @@ describe('terminal command', () => {
   it('writes an executable stub that names the current launcher and Node', () => {
     activated('/ext/hmcts-2.0.0');
     const stubFile = path.join(binDir, 'docmosis');
-    expect(statSync(stubFile).mode & 0o777).toBe(0o755);
+    expect(statSync(stubFile).mode & 0o777).toBe(0o700);
     const text = readFileSync(stubFile, 'utf8');
     expect(text).toContain(`'${path.join('/ext/hmcts-2.0.0', 'dist', 'cli', 'docmosis')}'`);
     expect(text).toContain(`DOCMOSIS_VSCODE_NODE='${process.execPath}'`);
