@@ -251,8 +251,16 @@ test('an index reads an item of the list, and an index on $this is not placed', 
     assert.equal(root.properties.items.item.properties.x.kind, 'string');
     assert.equal(root.properties.tags.kind, 'array');
     assert.deepEqual(Object.keys(root.properties.rows.item.properties), ['y']);
-    assert.deepEqual(warnings, ['"rows[][].x" indexes something that is not a list; ignored.']);
+    assert.deepEqual(warnings, ['"$this[0].x" indexes something that is not a list; ignored.']);
     assert.deepEqual(refs.map((r) => r.paths), [['items[].x'], ['tags'], ['rows'], ['rows[].y']]);
+});
+
+test('a repeat over $this[0] names the instruction as written, and warns once', () => {
+    const { root, warnings } = inferSchema([
+        rep('items', [{ type: 'repeat', text: 'rs_$this[0]', dataRefs: ['$this[0]'], children: [field('label')] }]),
+    ]);
+    assert.deepEqual(Object.keys(root.properties.items.item.properties), []);
+    assert.deepEqual(warnings, ['"$this[0]" indexes something that is not a list; ignored.']);
 });
 
 test('names written with spaces around the dot are recognised in conditions, dates, blank tests and repeat targets', () => {
@@ -426,9 +434,7 @@ test('a repeat over an indexed element marks the list, warns, and treats the chi
         { type: 'repeat', text: 'rs_items[0]', dataRefs: ['items[0]'], children: [field('x')] },
     ]);
     assert.deepEqual(kinds(root), { items: 'array' });
-    assert.equal(warnings.length, 2);
-    assert.match(warnings[0], /list inside a list/);
-    assert.equal(warnings[1], unplacedWarning('rs_items[0]', 'x'));
+    assert.deepEqual(warnings, ['"rs_items[0]" repeats over an item of the list "items", and the schema doesn\'t model a list inside a list.']);
 });
 
 test('refs: false skips the instruction index, and templateInstructions flattens every part', () => {
