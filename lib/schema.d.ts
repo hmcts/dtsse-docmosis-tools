@@ -47,10 +47,15 @@ export interface InferResult {
 }
 
 export function normaliseQuotes(text: string): string;
-export function inferSchema(tree: InstructionNode[]): InferResult;
+/** `refs: false` skips building `refs`, which is returned empty. */
+export function inferSchema(tree: InstructionNode[], options?: { refs?: boolean }): InferResult;
 export function schemaPaths(schema: ObjectSchema, prefix?: string): { path: string; kind: Schema['kind'] }[];
+/** Every path a schema names, objects and arrays as well as leaves, in the form `schemaPaths` writes them. */
+export function nodePaths(schema: ObjectSchema, prefix?: string): string[];
 export function summarise(schema: ObjectSchema): { fields: number; booleans: number; dates: number; repeats: number; strings: number };
 /** RegExp source for one data name, with an optional `$root`, `$parent` or `$this` prefix, spaces around dots and `[n]` indexes. */
 export const NAME_SOURCE: string;
+/** RegExp source for one step of a path: `.name` or `[n]`. */
+export const STEP_SOURCE: string;
 /** Resolves a name against the scope paths (outermost first; null for an unnamed scope) to a schema path such as `items[].x`. */
 export function resolveRef(scopes: (string | null)[], ref: string): string | null;

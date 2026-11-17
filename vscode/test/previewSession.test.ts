@@ -14,7 +14,7 @@ const TREE = [
 vi.mock('@hmcts-cft/docmosis-tools', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@hmcts-cft/docmosis-tools')>()),
   readTemplate: (file: string) => file,
-  instructionTree: () => [{ part: 'word/document.xml', children: TREE }],
+  templateInstructions: () => TREE,
 }));
 
 /** A workspace with a template, and a doc-render service that takes `delay` seconds to answer. */

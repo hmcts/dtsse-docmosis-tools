@@ -62,11 +62,13 @@ export interface TreeNode {
 export const ELSE_MARK: string;
 
 export function readTemplate(path: string): Template;
-/** A name reached through a scope prefix keeps it: `$root.caseRef`, `$parent.court.name`, `$this.role`. A bare name is read from the current repeat item only. */
+/** A name reached through a scope prefix keeps it: `$root.caseRef`, `$parent.court.name`, `$this.role`. A bare name is read from the current repeat item only. A `$variable` path such as `$myVar.name` is not data and is left out. */
 export function dataRefs(instruction: string): string[];
 export function text(template: TemplateInput): { part: string; lines: { kind: 'para' | 'row'; loc: string; text: string }[] }[];
 export function fields(template: TemplateInput): Record<string, unknown>[];
 export function instructionTree(template: TemplateInput): { part: string; children: TreeNode[] }[];
+/** Every part's top-level instruction nodes in one list, the input `inferSchema` takes. */
+export function templateInstructions(template: TemplateInput): TreeNode[];
 export function templateSchema(template: TemplateInput): Omit<InferResult, 'refs'>;
 export function check(template: TemplateInput): CheckResult;
 export function diff(oldTemplate: TemplateInput, newTemplate: TemplateInput): DiffResult;

@@ -1,4 +1,4 @@
-import { normaliseQuotes, type InstructionRefs } from './schema';
+import { normaliseQuotes, schemaPaths, type InstructionRefs, type ObjectSchema } from './schema';
 
 export interface RenderFailure {
   /** What dtsse-doc-render said was wrong with the instruction. */
@@ -25,12 +25,22 @@ export function parseRenderFailures(text: string): RenderFailure[] {
 
 const canonical = (text: string): string => normaliseQuotes(text).replace(/\s+/g, '');
 
-/** The schema paths read by the instruction a failure names, comparing with quote style and spacing ignored. */
-export function fieldsForFailure(failure: RenderFailure, index: InstructionRefs[]): string[] {
+/**
+ * The schema paths read by the instruction a failure names, comparing with quote style and spacing ignored.
+ * The form marks inputs, which exist only for leaf values, so with the schema an object or list path (read
+ * by `cs_address`, say) becomes the leaf paths under it.
+ */
+export function fieldsForFailure(failure: RenderFailure, index: InstructionRefs[], schema?: ObjectSchema): string[] {
   const instruction = canonical(failure.instruction);
+  const leaves = schema ? schemaPaths(schema).filter((p) => p.kind !== 'array') : [];
   const found = new Set<string>();
+  const add = (path: string) => {
+    const under = leaves.filter((leaf) => leaf.path.startsWith(`${path}.`) || leaf.path.startsWith(`${path}[]`));
+    if (under.length > 0) under.forEach((leaf) => found.add(leaf.path));
+    else found.add(path);
+  };
   for (const entry of index) {
-    if (canonical(entry.text) === instruction) entry.paths.forEach((p) => found.add(p));
+    if (canonical(entry.text) === instruction) entry.paths.forEach(add);
   }
   return [...found];
 }

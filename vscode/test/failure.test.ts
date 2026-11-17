@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { fieldsForFailure, parseRenderFailures } from '../src/failure';
-import { inferSchema, schemaPaths } from '../src/schema';
+import { nodePaths } from '@hmcts-cft/docmosis-tools/schema';
+import { inferSchema } from '../src/schema';
 import { cond, field, rep } from './helpers';
 import type { InstructionNode } from '../src/tree';
 
@@ -138,7 +139,7 @@ describe('the error index and the schema agree', () => {
   for (const [name, tree] of Object.entries(cases)) {
     it(`reports only schema paths for ${name}`, () => {
       const { root, refs } = inferSchema(tree);
-      const known = new Set(schemaPaths(root).map((p) => p.path));
+      const known = new Set(nodePaths(root));
       for (const entry of refs) for (const path of entry.paths) expect(known.has(path)).toBe(true);
     });
   }
@@ -152,5 +153,27 @@ describe('the error index and the schema agree', () => {
   it('maps an index on a name to an item of the list', () => {
     const { refs } = inferSchema(cases['an indexed name']!);
     expect(refs.map((e) => e.paths)).toEqual([['items[].name'], ['tags']]);
+  });
+  it('keeps the control of a condition on an indexed name', () => {
+    const { root } = inferSchema([cond('cs_items[0]', ['items[0]'])]);
+    expect(root.properties.items?.controls).toEqual(['cs_items[0]']);
+  });
+});
+
+describe('fieldsForFailure with the schema', () => {
+  const tree = [cond('cs_address', ['address']), field('{address.line1}', ['address.line1']), cond('cs_rows', ['rows'], [rep('rows', [field('{a}', ['a'])])])];
+  const { root, refs } = inferSchema(tree);
+  const failure = (instruction: string) => ({ reason: 'r', instruction, part: 'word/document.xml', where: 'paragraph 1' });
+
+  it('marks the leaf fields under an object that an instruction reads', () => {
+    expect(fieldsForFailure(failure('cs_address'), refs, root)).toEqual(['address.line1']);
+  });
+
+  it('marks the leaf fields under a list', () => {
+    expect(fieldsForFailure(failure('cs_rows'), refs, root)).toEqual(['rows[].a']);
+  });
+
+  it('keeps an object path as it is without the schema', () => {
+    expect(fieldsForFailure(failure('cs_address'), refs)).toEqual(['address']);
   });
 });

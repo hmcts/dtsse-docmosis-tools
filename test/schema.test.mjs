@@ -8,8 +8,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
-import { dataRefs, pack, readTemplate, templateSchema } from '../lib/docx.mjs';
-import { inferSchema, normaliseQuotes, schemaPaths, summarise } from '../lib/schema.mjs';
+import { dataRefs, pack, readTemplate, templateInstructions, templateSchema } from '../lib/docx.mjs';
+import { inferSchema, nodePaths, normaliseQuotes, resolveRef, schemaPaths, summarise } from '../lib/schema.mjs';
 
 const field = (text, dataRefs = [text]) => ({ type: 'field', text, dataRefs, children: [] });
 const cond = (text, dataRefs, children = []) => ({ type: 'condition', text, dataRefs, children });
@@ -233,11 +233,12 @@ test('a filtered repeat opens a scope, so $parent in it is the enclosing scope a
 });
 
 test('an unnamed repeat over no list opens a scope with no schema path, and $root still reaches out', () => {
-    const { root, refs } = inferSchema([
+    const { root, refs, warnings } = inferSchema([
         { type: 'repeat', text: 'rs_{x}', dataRefs: [], children: [field('name'), field('$root.top')] },
     ]);
     assert.deepEqual(Object.keys(root.properties), ['top']);
     assert.deepEqual(refs.map((r) => r.paths), [['top']]);
+    assert.equal(warnings.length, 1);
 });
 
 test('an index reads an item of the list, and an index on $this is not placed', () => {
@@ -288,7 +289,7 @@ test('the error index paths are all schema paths, in every scope', () => {
         { type: 'repeat', text: 'rs_cases.?[x]', dataRefs: ['cases', 'x'], children: [field('$parent.y')] },
     ];
     const { root, refs } = inferSchema(tree);
-    const known = new Set(schemaPaths(root).map((p) => p.path));
+    const known = new Set(nodePaths(root));
     for (const r of refs) for (const p of r.paths) assert.ok(known.has(p), p);
 });
 
@@ -310,11 +311,11 @@ test('refs hold only schema paths', () => {
         rep('items', [field('{items.x}', ['items.x'])]),
         { type: 'repeat', text: 'rs_items', dataRefs: ['items'], children: [] },
     ]);
-    const known = new Set(schemaPaths(root).map((p) => p.path));
+    const known = new Set(nodePaths(root));
     for (const r of refs) for (const p of r.paths) assert.ok(known.has(p), p);
     assert.ok(refs.every((r) => r.paths.length > 0));
     const objectRepeat = inferSchema([cond('cs_a', ['a']), field('a.b'), { type: 'repeat', text: 'rs_a', dataRefs: ['a'], children: [] }]);
-    assert.deepEqual(objectRepeat.refs.map((r) => r.text), ['a.b']);
+    assert.deepEqual(objectRepeat.refs.map((r) => r.text), ['cs_a', 'a.b', 'rs_a']);
 });
 
 test('$parent outside any repeat reads nothing', () => {
@@ -332,7 +333,7 @@ test('$parent inside a repeat that has no schema path reads nothing', () => {
     ]);
     assert.deepEqual(Object.keys(root.properties), ['agents']);
     assert.deepEqual(Object.keys(root.properties.agents.item.properties), []);
-    assert.deepEqual(warnings, []);
+    assert.deepEqual(warnings, ["\"rs_{foo()}\" repeats over something the schema can't place, so the names inside it ($parent.x) are not in the form"]);
 });
 
 test('method arguments in an unnamed repeat are read in the enclosing scope, filter bodies per item', () => {
@@ -351,4 +352,121 @@ test('a scalar read as a list warns the same way however it is spelled', () => {
     const { warnings } = inferSchema([field('items'), field('items[0].name')]);
     assert.deepEqual(warnings, ['"items" is used as both string and a repeat; treated as a repeat.']);
     assert.deepEqual(inferSchema([cond('cs_{!isBlank(items)}', ['items']), field('items[0].name')]).warnings, []);
+});
+
+const unplacedWarning = (text, names) => `"${text}" repeats over something the schema can't place, so the names inside it (${names}) are not in the form`;
+
+test('a method call after a name in a filter body leaves the name per item', () => {
+    const size = inferSchema([{ type: 'repeat', text: 'rs_{cases.?[parties.size() > 0]}', dataRefs: ['cases', 'parties'], children: [] }]);
+    assert.deepEqual(kinds(size.root), { cases: 'array', 'cases[].parties': 'string' });
+    const equals = inferSchema([{ type: 'repeat', text: "rs_{cases.?[type.equals('X')]}", dataRefs: ['cases', 'type'], children: [] }]);
+    assert.deepEqual(kinds(equals.root), { cases: 'array', 'cases[].type': 'string' });
+    const outer = inferSchema([{ type: 'repeat', text: 'rs_{cases.subList(0, rows.size())}', dataRefs: ['cases', 'rows'], children: [] }]);
+    assert.deepEqual(kinds(outer.root), { cases: 'array', rows: 'string' });
+});
+
+test('names inside an unnamed repeat over an unplaceable list are warned about once, not dropped silently', () => {
+    const { root, warnings, refs } = inferSchema([
+        { type: 'repeat', text: 'rs_{$list}', dataRefs: [], children: [
+            field('name'),
+            rep('inner', [field('x')]),
+            field('$root.top'),
+            field('$this.role'),
+        ] },
+    ]);
+    assert.deepEqual(Object.keys(root.properties), ['top']);
+    assert.deepEqual(warnings, [unplacedWarning('rs_inner', 'x'), unplacedWarning('rs_{$list}', 'name, inner, $this.role')]);
+    assert.deepEqual(refs.map((r) => r.paths), [['top']]);
+});
+
+test('$parent in an unplaceable repeat reads the real enclosing scope, and names in a repeat header count', () => {
+    const { root, warnings } = inferSchema([
+        rep('cases', [
+            { type: 'repeat', text: 'rs_{$list}', dataRefs: [], children: [field('$parent.ref'), field('a')] },
+        ]),
+    ]);
+    assert.deepEqual(Object.keys(root.properties.cases.item.properties), ['ref']);
+    assert.equal(warnings.length, 1);
+    assert.match(warnings[0], /\(a\)/);
+    const header = inferSchema([{ type: 'repeat', text: 'rs_{$list.?[flag]}', dataRefs: ['flag'], children: [] }]);
+    assert.deepEqual(header.warnings, [unplacedWarning('rs_{$list.?[flag]}', 'flag')]);
+});
+
+test('refs keep an object or array path that a name widened', () => {
+    const { refs } = inferSchema([cond('cs_address', ['address']), field('{address.line1}', ['address.line1'])]);
+    assert.deepEqual(refs.map((r) => r.paths), [['address'], ['address.line1']]);
+});
+
+test('a condition on an indexed name records its control on the list', () => {
+    const { root } = inferSchema([cond('cs_items[0]', ['items[0]'])]);
+    assert.deepEqual(root.properties.items.controls, ['cs_items[0]']);
+    const expr = inferSchema([cond('cs_{items[0] == 1}', ['items[0]'])]);
+    assert.deepEqual(expr.root.properties.items.controls, ['cs_{items[0] == 1}']);
+});
+
+test('a prefix is only a prefix when no name character follows it', () => {
+    assert.equal(resolveRef(['', 'a[]'], '$thisIsMine.x'), null);
+    assert.equal(resolveRef(['', 'a[]'], '$parentCase.x'), null);
+    assert.equal(resolveRef(['', 'a[]'], '$parent.x'), 'x');
+    assert.equal(resolveRef(['', 'a[]'], '$this.x'), 'a[].x');
+    const { root } = inferSchema([rep('a', [field('$thisIsMine.x'), field('$parentCase.x')])]);
+    assert.deepEqual(kinds(root), { a: 'array' });
+});
+
+test('prefixes stay in dataRefs, and a user variable path is not a data name', () => {
+    assert.deepEqual(dataRefs('{$myVar.name}'), []);
+    assert.deepEqual(dataRefs('{$myVar[0].name + x}'), ['x']);
+    assert.deepEqual(dataRefs('{$myVar.size() > n}'), ['n']);
+    assert.deepEqual(dataRefs('{$thisIsMine.x}'), []);
+    assert.deepEqual(dataRefs('{$root.a + $this.b + $parent.c}'), ['$root.a', '$this.b', '$parent.c']);
+});
+
+test('a repeat over an indexed element marks the list, warns, and treats the children as unplaceable', () => {
+    const { root, warnings } = inferSchema([
+        { type: 'repeat', text: 'rs_items[0]', dataRefs: ['items[0]'], children: [field('x')] },
+    ]);
+    assert.deepEqual(kinds(root), { items: 'array' });
+    assert.equal(warnings.length, 2);
+    assert.match(warnings[0], /list inside a list/);
+    assert.equal(warnings[1], unplacedWarning('rs_items[0]', 'x'));
+});
+
+test('refs: false skips the instruction index, and templateInstructions flattens every part', () => {
+    const tree = [field('a'), rep('rows', [field('b')])];
+    assert.deepEqual(inferSchema(tree, { refs: false }).refs, []);
+    assert.deepEqual(inferSchema(tree, { refs: false }).root, inferSchema(tree).root);
+    withDocx(['<<a>>', '<<rs_rows>>', '<<b>>', '<<es_>>'], (file) => {
+        const nodes = templateInstructions(readTemplate(file));
+        assert.deepEqual(nodes.map((n) => n.text), ['a', 'rs_rows']);
+    });
+});
+
+test('a later date use that names an input format fills one the first left out, and never removes one', () => {
+    const named = inferSchema([field("{dateFormat(d,'d MMMM yyyy')}", ['d']), field("{dateFormat(d,'d MMM','dd/MM/yyyy')}", ['d'])]);
+    assert.equal(named.root.properties.d.inputFormat, 'dd/MM/yyyy');
+    assert.deepEqual(named.warnings, []);
+    const kept = inferSchema([field("{dateFormat(d,'d MMM','dd/MM/yyyy')}", ['d']), field("{dateFormat(d,'d MMMM yyyy')}", ['d'])]);
+    assert.equal(kept.root.properties.d.inputFormat, 'dd/MM/yyyy');
+});
+
+test('cr_ rows, repeats named twice, nested and dotted repeats, comments and boolean tests of lists and objects', () => {
+    assert.deepEqual(inferSchema([cond('cr_hasRow', ['hasRow'], [], true)]).root.properties.hasRow, { kind: 'boolean', controls: ['cr_hasRow'], notes: [] });
+    assert.deepEqual(kinds(inferSchema([rep('rows', [field('a')]), rep('rows', [field('b')])]).root), { rows: 'array', 'rows[].a': 'string', 'rows[].b': 'string' });
+    assert.deepEqual(kinds(inferSchema([rep('claim.parties', [field('name'), rep('docs', [field('title')])])]).root), {
+        'claim.parties': 'array',
+        'claim.parties[].name': 'string',
+        'claim.parties[].docs': 'array',
+        'claim.parties[].docs[].title': 'string',
+    });
+    assert.deepEqual(inferSchema([{ type: 'comment', text: '/* note */', dataRefs: [], children: [] }]).root.properties, {});
+    const tested = inferSchema([cond('cs_rows', ['rows']), rep('rows', [field('a')]), cond('cs_obj', ['obj']), field('obj.x')]);
+    assert.equal(tested.root.properties.rows.kind, 'array');
+    assert.equal(tested.root.properties.obj.kind, 'object');
+    assert.deepEqual(tested.warnings, []);
+});
+
+test('a date used as a string widens without its input format, and a repeated conflict warns once', () => {
+    const { root, warnings } = inferSchema([field("{dateFormat(d,'yyyy','yyyy-MM-dd')}", ['d']), field('d'), field('d')]);
+    assert.deepEqual(root.properties.d, { kind: 'string', controls: [], notes: [] });
+    assert.equal(warnings.length, 1);
 });

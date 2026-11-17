@@ -88,7 +88,7 @@ class PreviewSession {
           request: request.id,
           message: error.message,
           fields: failures.flatMap((failure) =>
-            fieldsForFailure(failure, this.instructions).map((path) => ({ path, reason: failure.reason })),
+            fieldsForFailure(failure, this.instructions, this.schema).map((path) => ({ path, reason: failure.reason })),
           ),
         });
       },
