@@ -18,6 +18,8 @@ concurrency:
 jobs:
   release:
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -26,6 +28,14 @@ jobs:
           cache: npm
           cache-dependency-path: vscode/package-lock.json
       - run: node --test test/*.test.mjs
+      - name: Set the extension version
+        id: version
+        working-directory: vscode
+        run: |
+          # The Marketplace rejects a version it already has, and the run number only increases.
+          version="0.1.${GITHUB_RUN_NUMBER}"
+          npm pkg set "version=${version}"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
       - name: Build the extension
         working-directory: vscode
         run: |
@@ -35,11 +45,55 @@ jobs:
       - name: Publish the release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.version.outputs.version }}
         run: |
-          version="$(node -p "require('./vscode/package.json').version")"
-          tag="v${version}-${GITHUB_RUN_NUMBER}-${GITHUB_SHA::7}"
-          gh release create "$tag" vscode/hmcts-template-preview.vsix \
+          gh release create "v${VERSION}" vscode/hmcts-template-preview.vsix \
             --target "$GITHUB_SHA" \
-            --title "$tag" \
-            --notes "HMCTS Template Preview ${version}, built from ${GITHUB_SHA}." \
+            --title "v${VERSION}" \
+            --notes "HMCTS Template Preview ${VERSION}, built from ${GITHUB_SHA}." \
             --latest
+      - uses: actions/upload-artifact@v7
+        with:
+          name: vsix
+          path: vscode/hmcts-template-preview.vsix
+          if-no-files-found: error
+
+  publish:
+    needs: release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      VSCE_PAT: ${{ secrets.VSCE_PAT }}
+      VSCE_AZURE_CLIENT_ID: ${{ vars.VSCE_AZURE_CLIENT_ID }}
+      OVSX_PAT: ${{ secrets.OVSX_PAT }}
+    steps:
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - uses: actions/download-artifact@v8
+        with:
+          name: vsix
+      - name: Visual Studio Marketplace (skipped, no credential)
+        if: env.VSCE_PAT == '' && env.VSCE_AZURE_CLIENT_ID == ''
+        run: echo "Skipping the Visual Studio Marketplace, because neither secrets.VSCE_PAT nor vars.VSCE_AZURE_CLIENT_ID is set."
+      - name: Visual Studio Marketplace (access token)
+        if: env.VSCE_PAT != ''
+        run: npx --yes @vscode/vsce@3 publish --packagePath hmcts-template-preview.vsix --skip-duplicate
+      - name: Sign in to Azure
+        if: env.VSCE_PAT == '' && env.VSCE_AZURE_CLIENT_ID != ''
+        uses: azure/login@v3
+        with:
+          client-id: ${{ vars.VSCE_AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.VSCE_AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.VSCE_AZURE_SUBSCRIPTION_ID }}
+      - name: Visual Studio Marketplace (Entra identity)
+        if: env.VSCE_PAT == '' && env.VSCE_AZURE_CLIENT_ID != ''
+        run: npx --yes @vscode/vsce@3 publish --packagePath hmcts-template-preview.vsix --azure-credential --skip-duplicate
+      - name: Open VSX (skipped, no credential)
+        if: env.OVSX_PAT == ''
+        run: echo "Skipping Open VSX, because secrets.OVSX_PAT is not set."
+      - name: Open VSX
+        if: env.OVSX_PAT != ''
+        run: npx --yes ovsx@0 publish hmcts-template-preview.vsix -p "$OVSX_PAT" --skip-duplicate

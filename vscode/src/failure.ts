@@ -14,7 +14,7 @@ export interface RenderFailure {
 
 const ERROR_LINE = /^(.*): <<(.*)>> \((\S+?), (.*)\)$/;
 
-/** Reads each `<reason>: <<instruction>> (part, where)` line of the CLI's error text; lines in another shape are skipped. */
+/** Reads each `<reason>: <<instruction>> (part, where)` line of the render error text; lines in another shape are skipped. */
 export function parseRenderFailures(text: string): RenderFailure[] {
   const failures: RenderFailure[] = [];
   for (const line of text.split('\n')) {
