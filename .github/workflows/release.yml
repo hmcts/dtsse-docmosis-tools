@@ -54,11 +54,6 @@ jobs:
             --title "v${VERSION}" \
             --notes "HMCTS Template Preview ${VERSION}, built from ${GITHUB_SHA}." \
             --latest
-      - uses: actions/upload-artifact@v7
-        with:
-          name: vsix
-          path: vscode/hmcts-template-preview.vsix
-          if-no-files-found: error
       - name: Publish to the Marketplace and Open VSX
         env:
           GH_TOKEN: ${{ github.token }}
