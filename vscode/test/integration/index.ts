@@ -70,8 +70,8 @@ export async function run(): Promise<void> {
   const sidecar = join(workspace, '.hmcts-template-preview', 'Synthetic', 'default.json');
   await until(() => existsSync(join(cliDir, 'args')) && existsSync(sidecar), 'the webview to request a render');
   const args = readFileSync(join(cliDir, 'args'), 'utf8').trim().split(' ');
-  assert.deepEqual(args.slice(0, 2), ['local', 'render']);
-  assert.ok(args[2]!.endsWith('Synthetic.docx'));
+  assert.equal(args[0], 'render-file');
+  assert.ok(args[1]!.endsWith('Synthetic.docx'));
   assert.equal(readFileSync(join(workspace, '.hmcts-template-preview', '.gitignore'), 'utf8'), '*\n');
   console.log('integration: webview round trip passed');
 }

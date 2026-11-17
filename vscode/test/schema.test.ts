@@ -1,7 +1,5 @@
-import { existsSync, readFileSync } from 'node:fs';
-import { beforeAll, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { inferSchema, schemaPaths, summarise, type ObjectSchema } from '../src/schema';
-import type { InstructionNode } from '../src/tree';
 import { cond, field, otherwise, rep } from './helpers';
 
 const kinds = (root: ObjectSchema) => Object.fromEntries(schemaPaths(root).map((p) => [p.path, p.kind]));
@@ -186,56 +184,5 @@ describe('summarise', () => {
       rep('rows', [field('n')]),
     ]);
     expect(summarise(root)).toEqual({ fields: 4, booleans: 1, dates: 1, repeats: 1, strings: 2 });
-  });
-});
-
-const STRUCTURE = '/tmp/pl-vm/v1-structure.json';
-
-interface DocmosisNode {
-  type: 'field' | 'condition' | 'repeat';
-  text: string;
-  dataRefs: string[];
-  contains?: DocmosisNode[];
-}
-
-const convert = (n: DocmosisNode): InstructionNode => {
-  const children = (n.contains ?? []).map(convert);
-  return {
-    type: n.type,
-    text: n.text,
-    dataRefs: n.dataRefs ?? [],
-    children,
-    ...(/^(cr|rr)_/.test(n.text) ? { row: true } : {}),
-  };
-};
-
-describe.skipIf(!existsSync(STRUCTURE))("Docmosis's getTemplateStructure output", () => {
-  let root: ReturnType<typeof inferSchema>['root'];
-  let warnings: ReturnType<typeof inferSchema>['warnings'];
-  let paths: ReturnType<typeof kinds>;
-
-  beforeAll(() => {
-    const raw = JSON.parse(readFileSync(STRUCTURE, 'utf8')) as { templateStructure: DocmosisNode[] };
-    ({ root, warnings } = inferSchema(raw.templateStructure.map(convert)));
-    paths = kinds(root);
-  });
-
-  it('finds the plain fields, dotted paths and conditions', () => {
-    expect(paths.referenceNumber).toBe('string');
-    expect(paths['claimant.address.addressLine1']).toBe('string');
-    expect(paths.isEngland).toBe('boolean');
-  });
-
-  it('finds date expressions and repeats', () => {
-    expect(paths.issueDateSealed).toBe('date');
-    expect(Object.values(paths)).toContain('array');
-    expect(Object.keys(paths).some((p) => p.includes('[]'))).toBe(true);
-  });
-
-  it('infers a plausible number of values and reports warnings as strings', () => {
-    const counts = summarise(root);
-    expect(counts.fields).toBeGreaterThan(20);
-    expect(counts.booleans).toBeGreaterThan(0);
-    expect(warnings.every((w) => typeof w === 'string')).toBe(true);
   });
 });

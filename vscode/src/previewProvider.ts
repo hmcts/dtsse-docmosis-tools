@@ -6,7 +6,7 @@ import * as vscode from 'vscode';
 import { isObject, type JsonObject } from './data';
 import type { HostToWebview, TemplateInfo, WebviewToHost } from './messages';
 import { bundledCli, LatestRenderer, renderPdf, resolveCli } from './render';
-import { fieldsForFailure, indexInstructions, parseRenderFailure, type InstructionRefs } from './failure';
+import { fieldsForFailure, indexInstructions, parseRenderFailures, type InstructionRefs } from './failure';
 import { inferSchema, type ObjectSchema } from './schema';
 import { ensureSidecarFolder, readTemplateSidecar, sidecarPath, writeSidecar } from './sidecar';
 import { CachedTemplateReader, libraryPathFor } from './templateTree';
@@ -81,14 +81,15 @@ class PreviewSession {
       onError: (seq, error, request) => {
         this.output.appendLine(`Render ${seq} failed: ${error.message}`);
         this.output.show(true);
-        const failure = parseRenderFailure(error.message);
+        const failures = parseRenderFailures(error.message);
         this.post({
           type: 'renderError',
           seq,
           request: request.id,
           message: error.message,
-          fields: fieldsForFailure(failure, this.instructions),
-          ...(failure.reason ? { reason: failure.reason } : {}),
+          fields: failures.flatMap((failure) =>
+            fieldsForFailure(failure, this.instructions).map((path) => ({ path, reason: failure.reason })),
+          ),
         });
       },
     });

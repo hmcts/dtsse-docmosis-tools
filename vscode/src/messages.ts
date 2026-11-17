@@ -14,7 +14,7 @@ export type HostToWebview =
   | { type: 'data'; data: JsonObject }
   | { type: 'rendering'; seq: number }
   | { type: 'pdf'; seq: number; request: number; bytes: Uint8Array }
-  | { type: 'renderError'; seq: number; request: number; message: string; fields: string[]; reason?: string }
+  | { type: 'renderError'; seq: number; request: number; message: string; fields: { path: string; reason: string }[] }
   | { type: 'invalid'; request: number; issues: FieldIssue[] }
   | { type: 'info'; message: string }
   | { type: 'templateError'; message: string };

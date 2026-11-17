@@ -51,7 +51,7 @@ export interface RenderResult {
   dataPath: string;
 }
 
-/** Writes the data to a temp JSON and renders the template through `docmosis local render`. */
+/** Writes the data to a temp JSON and renders the template through `docmosis render-file`, which sends it to the hosted dtsse-doc-render. */
 export async function renderPdf(options: RenderOptions): Promise<RenderResult> {
   const { cli, docx, data, dev, outDir, cwd, log, signal } = options;
   await fs.mkdir(outDir, { recursive: true });
@@ -61,7 +61,7 @@ export async function renderPdf(options: RenderOptions): Promise<RenderResult> {
   await fs.writeFile(dataPath, JSON.stringify(data, null, 2));
   await fs.rm(pdfPath, { force: true });
 
-  const args = ['local', 'render', docx, dataPath, '--out', pdfPath, ...(dev ? ['--dev'] : [])];
+  const args = ['render-file', docx, dataPath, '--out', pdfPath, ...(dev ? ['--dev'] : [])];
   log?.(`$ ${cli} ${args.join(' ')}`);
 
   await new Promise<void>((resolve, reject) => {

@@ -1,13 +1,13 @@
 # HMCTS Template Preview
 
-A VS Code extension that previews Docmosis `.docx` templates locally.
+A VS Code extension that previews Docmosis `.docx` templates.
 
 - Reads the template's instructions (fields, conditions, repeats and expressions) and infers the data it needs.
 - Builds an input form from that: text and date inputs, checkboxes and repeat sections with add and remove row. Each input shows which `cs_`/`cr_` block it controls.
-- Renders through a local Docmosis and shows the PDF beside the form. It re-renders 600 ms after you stop typing, and when the `.docx` changes on disk.
+- Renders on the hosted [dtsse-doc-render](https://github.com/hmcts/dtsse-doc-render) service in AAT and shows the PDF beside the form. It re-renders 600 ms after you stop typing, and when the `.docx` changes on disk.
 - Reports coverage: values the template uses that the data lacks, and data keys the template never uses.
 
-The extension never reads Key Vault or handles Docmosis keys. It calls `docmosis local render`, which starts the `docmosis-local` container and fetches the licence with your `az` login. The `.vsix` bundles the CLI (`bin/docmosis`) and its template library (`lib/docx.mjs`) from this repo, so it works in any workspace; template parsing uses that library, so the extension and the CLI agree on what a template contains.
+The extension never handles keys. It calls `docmosis render-file`, which sends the template and data to dtsse-doc-render; the service is reachable only over the VPN, so connect it first (if a render fails with "the VPN is probably down", it is not connected). The service renders a subset of Docmosis (see its `docs/template-language.md`), so a preview is not proof that a template works in Docmosis: the hmcts/docmosis PR check stays the gate. The `.vsix` bundles the CLI (`bin/docmosis`) and its template library (`lib/docx.mjs`) from this repo, so it works in any workspace; template parsing uses that library, so the extension and the CLI agree on what a template contains.
 
 ## Use
 
@@ -20,7 +20,7 @@ Toolbar:
 | Render | Renders now. |
 | Load data... | Merges a JSON file into the form. |
 | Save data | Writes the form data to the sidecar file. |
-| Dev mode | Passes `--dev` to `docmosis`. |
+| Dev mode | Passes `--dev` to `docmosis render-file`. |
 | Open PDF | Saves the PDF beside the data and reveals it in the Explorer. |
 
 Data is saved on every render at `<workspaceFolder>/.hmcts-template-preview/<template path>/default.json`, where `<template path>` is the template's path in the workspace without `.docx` (so `Templates/Base/X.docx` and `Templates/AAT/X.docx` keep separate data). Data saved by earlier versions under `.hmcts-template-preview/<template name>/default.json` is loaded when the new file doesn't exist yet. The folder contains a `.gitignore` with `*`, so it is never committed. The form holds only the values you supplied; missing values aren't defaulted.
@@ -49,7 +49,7 @@ Open this folder in VS Code and press F5 to start an Extension Development Host,
 | Script | |
 |---|---|
 | `npm run build` | Type-check, then bundle `dist/extension.js` (node) and `dist/webview.js` (browser) with esbuild, and copy the pdf.js worker and the CLI (`../bin/docmosis`, `../lib/docx.mjs`) into `cli/`. |
-| `npm test` | Unit tests (vitest). The test against the real Docmosis structure file skips when `/tmp/pl-vm/v1-structure.json` is absent; the library test uses `../lib/docx.mjs` unless `DOCMOSIS_LIB` names another. |
+| `npm test` | Unit tests (vitest). The library test uses `../lib/docx.mjs` unless `DOCMOSIS_LIB` names another. |
 | `npm run test:integration` | Opens the editor in a real VS Code under `xvfb-run` with a fake CLI and `../lib/docx.mjs` (`@vscode/test-electron`; downloads VS Code on first run). |
 | `npm run package` | Build, then write `hmcts-template-preview.vsix`. |
 
