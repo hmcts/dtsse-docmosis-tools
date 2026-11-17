@@ -59,6 +59,29 @@ LOCAL_JAVA_OPTIONS="-XX:InitialRAMPercentage=20.0 -XX:MaxRAMPercentage=65.0 -XX:
 # Templates are copied into the container rather than bind-mounted: the Docker daemon can
 # run on another host (a devcontainer or sandbox), where a bind mount comes up empty.
 LOCAL_STATE="${DOCMOSIS_LOCAL_STATE:-$HOME/.local/state/docmosis-local}"
+LOCAL_TEMPLATES="$POD_TEMPLATES"
+LOCAL_ENDPOINT_FILE="endpoint"
+LOCAL_LOCK_FILE="start.lock"
+LOCAL_LITE=false
+[[ "${DOCMOSIS_LOCAL_BACKEND:-}" != lite ]] || LOCAL_LITE=true
+
+# The lite backend is dtsse-doc-render, an unlicensed Docmosis-compatible render service: no
+# licence, access key or Key Vault. It has its own container name and port, so it runs beside
+# the licensed container.
+LITE_IMAGE="${DOCMOSIS_LITE_IMAGE:-hmctsprod.azurecr.io/dtsse/doc-render:latest}"
+LITE_CONTAINER="docmosis-lite"
+LITE_HTTP_PORT="${DOCMOSIS_LITE_PORT:-18088}"
+LITE_BUILD="${DOCMOSIS_LITE_BUILD:-}"
+LITE_BUILD_TAG="dtsse-doc-render:local"
+LITE_TEMPLATES="/tmp/templates"
+# The lite image has no curl, so in-container requests use node, which it always has. The
+# render script writes the same $1.out and $1.code files the curl one does.
+LITE_NODE_PROBE='fetch("http://127.0.0.1:8080/api/status").then(r=>r.json()).then(j=>process.exit(j.ready===true?0:1)).catch(()=>process.exit(1))'
+LITE_NODE_RENDER='const fs=require("fs"),id=process.argv[1];
+fetch("http://127.0.0.1:8080/api/render",{method:"POST",headers:{"Content-Type":"application/json"},body:fs.readFileSync(id+".req"),signal:AbortSignal.timeout(120000)})
+.then(async r=>{fs.writeFileSync(id+".out",Buffer.from(await r.arrayBuffer()));return String(r.status)})
+.catch(()=>"000")
+.then(code=>{fs.rmSync(id+".req",{force:true});fs.writeFileSync(id+".tmp",code);fs.renameSync(id+".tmp",id+".code")})'
 
 usage() {
     cat >&2 <<'EOF'
@@ -95,21 +118,30 @@ Docmosis instance:
                                  (docmosis-docmosis-unified-pr-<n> only) to render it there
 
 Local Docmosis (Docker; the same image as every environment, licence key from Key Vault):
-  local start                    pull the image, and start it on 127.0.0.1:18087 of the Docker
+  local start [--lite]           pull the image, and start it on 127.0.0.1:18087 of the Docker
                                  host (DOCMOSIS_LOCAL_PORT); recreates a container that is
                                  running an older image
-  local render <file.docx> <data.json> [--out file] [--dev] [--format pdf|docx]
+  local render [--lite] <file.docx> <data.json> [--out file] [--dev] [--format pdf|docx]
                                  render a local template file, starting Docmosis if needed;
                                  --format docx gives a .docx that text and diff can read.
                                  Each render copies the file in under a new name and
                                  deletes it afterwards, so an edited file is never stale
-  local status | stop            whether it's running and how it is reached; stop and
+                                 (--lite sends the template inline in the request instead)
+  local status | stop [--lite]   whether it's running and how it is reached; stop and
                                  remove the container
   The script calls it on 127.0.0.1, host.docker.internal or a tcp:// DOCKER_HOST, whichever
   answers, else through docker exec; DOCMOSIS_LOCAL_ENDPOINT=<url>|exec forces one.
   The licence key is read from Key Vault dtsse-aat / docmosis-tornado-trial-key
   (DOCMOSIS_LICENCE_VAULT, DOCMOSIS_LICENCE_SECRET; site DOCMOSIS_LICENCE_SITE), and is
   rotated monthly: after a rotation, run local stop then local start.
+
+  --lite (or DOCMOSIS_LOCAL_BACKEND=lite) runs dtsse-doc-render instead: no licence, no Key
+  Vault, no access key, ready in seconds. It is container docmosis-lite on 127.0.0.1:18088
+  (DOCMOSIS_LITE_PORT), beside the licensed one, from
+  hmctsprod.azurecr.io/dtsse/doc-render:latest (DOCMOSIS_LITE_IMAGE). Until that image is
+  published, DOCMOSIS_LITE_BUILD=<path to a dtsse-doc-render clone> builds it as
+  dtsse-doc-render:local. It renders the subset of Docmosis in that repo's
+  docs/template-language.md, so a lite render doesn't prove a template works in Docmosis.
 
 Instance options (or set DOCMOSIS_URL):
   --url URL                      default https://docmosis.aat.platform.hmcts.net (VPN);
@@ -165,6 +197,7 @@ while [[ $# -gt 0 ]]; do
         --preview) PREVIEW="$2"; shift 2 ;;
         --out) OUT="$2"; shift 2 ;;
         --dev) DEV=true; shift ;;
+        --lite) LOCAL_LITE=true; shift ;;
         --format) FORMAT="$2"; shift 2 ;;
         --api-path) API_PATH="$2"; shift 2 ;;
         *) ARGS+=("$1"); shift ;;
@@ -175,6 +208,16 @@ COMMAND="${1:-}"
 [[ -n "$COMMAND" ]] || { usage; exit 2; }
 shift
 [[ "$FORMAT" == pdf || "$FORMAT" == docx ]] || die "--format is pdf or docx"
+
+if [[ "$LOCAL_LITE" == true ]]; then
+    LOCAL_CONTAINER="$LITE_CONTAINER"
+    LOCAL_HTTP_PORT="$LITE_HTTP_PORT"
+    LOCAL_TEMPLATES="$LITE_TEMPLATES"
+    LOCAL_ENDPOINT_FILE="endpoint-lite"
+    LOCAL_LOCK_FILE="start-lite.lock"
+    LOCAL_IMAGE="$LITE_IMAGE"
+    [[ -z "$LITE_BUILD" ]] || LOCAL_IMAGE="$LITE_BUILD_TAG"
+fi
 
 if [[ -n "$PREVIEW" ]]; then
     [[ "$PREVIEW" =~ ^[0-9]+$ ]] || die "--preview takes a hmcts/docmosis PR number"
@@ -219,7 +262,7 @@ cleanup() {
     [[ -z "$PF_LOG" ]] || rm -f "$PF_LOG"
     if [[ -n "$LOCAL_TEMPLATE$LOCAL_EXEC_FILES" ]]; then
         docker exec -u 0 "$LOCAL_CONTAINER" sh -c 'rm -f "$1" "$2".req "$2".out "$2".tmp "$2".code' _ \
-            "$POD_TEMPLATES/$LOCAL_TEMPLATE" "${LOCAL_EXEC_FILES:-/nonexistent}" >/dev/null 2>&1 || true
+            "$LOCAL_TEMPLATES/$LOCAL_TEMPLATE" "${LOCAL_EXEC_FILES:-/nonexistent}" >/dev/null 2>&1 || true
     fi
 }
 trap cleanup EXIT
@@ -360,7 +403,7 @@ local_endpoint() {
         printf '%s\n' "$DOCMOSIS_LOCAL_ENDPOINT"
         return
     fi
-    [[ ! -f "$LOCAL_STATE/endpoint" ]] || saved="$(cat "$LOCAL_STATE/endpoint")"
+    [[ ! -f "$LOCAL_STATE/$LOCAL_ENDPOINT_FILE" ]] || saved="$(cat "$LOCAL_STATE/$LOCAL_ENDPOINT_FILE")"
     # An address that answers is kept. The docker exec fallback is not: it is much slower, and
     # chosen at start-up it can just mean the published port wasn't reachable yet.
     if [[ -n "$saved" && "$saved" != exec ]] && local_answers "$saved"; then
@@ -379,8 +422,8 @@ local_endpoint() {
         fi
     done
     mkdir -p "$LOCAL_STATE"
-    printf '%s\n' "$saved" >"$LOCAL_STATE/endpoint.$$"
-    mv -f "$LOCAL_STATE/endpoint.$$" "$LOCAL_STATE/endpoint"
+    printf '%s\n' "$saved" >"$LOCAL_STATE/$LOCAL_ENDPOINT_FILE.$$"
+    mv -f "$LOCAL_STATE/$LOCAL_ENDPOINT_FILE.$$" "$LOCAL_STATE/$LOCAL_ENDPOINT_FILE"
     printf '%s\n' "$saved"
 }
 
@@ -397,8 +440,9 @@ local_access_key() {
 local_connect() {
     URL="$(local_endpoint)"
     API_PATH=/api
-    ACCESS_KEY="$(local_access_key)"
-    [[ -n "$ACCESS_KEY" ]] || die "$LOCAL_CONTAINER has no DOCMOSIS_ACCESSKEY; run docmosis local stop, then local render or local start"
+    ACCESS_KEY=""
+    [[ "$LOCAL_LITE" == true ]] || ACCESS_KEY="$(local_access_key)"
+    [[ "$LOCAL_LITE" == true || -n "$ACCESS_KEY" ]] || die "$LOCAL_CONTAINER has no DOCMOSIS_ACCESSKEY; run docmosis local stop, then local render or local start"
 }
 
 # Starting, replacing and stopping the container happen under a lock, so concurrent renders
@@ -407,7 +451,7 @@ local_connect() {
 # 15 minutes (a holder on another host, or one that died before writing the owner), is
 # taken over.
 local_lock() {
-    local lock="$LOCAL_STATE/start.lock" owner pid said=false
+    local lock="$LOCAL_STATE/$LOCAL_LOCK_FILE" owner pid said=false
     mkdir -p "$LOCAL_STATE"
     for _ in $(seq 1 900); do
         if mkdir "$lock" 2>/dev/null; then
@@ -444,8 +488,12 @@ exec_render() {
     local body="$1" out="$2" id="$LOCAL_EXEC_FILES" code=""
     ACCESS_KEY="$ACCESS_KEY" jq -c '. + {accessKey: env.ACCESS_KEY}' <<<"$body" \
         | docker exec -i "$LOCAL_CONTAINER" sh -c 'umask 077; rm -f "$1.out" "$1.code"; cat >"$1.req"' _ "$id"
-    docker exec -d "$LOCAL_CONTAINER" sh -c \
-        'curl -s -m 120 -H "Content-Type: application/json" --data-binary @"$1.req" -o "$1.out" -w "%{http_code}" http://127.0.0.1:8080/api/render >"$1.tmp"; rm -f "$1.req"; mv "$1.tmp" "$1.code"' _ "$id"
+    if [[ "$LOCAL_LITE" == true ]]; then
+        docker exec -d "$LOCAL_CONTAINER" node -e "$LITE_NODE_RENDER" "$id"
+    else
+        docker exec -d "$LOCAL_CONTAINER" sh -c \
+            'curl -s -m 120 -H "Content-Type: application/json" --data-binary @"$1.req" -o "$1.out" -w "%{http_code}" http://127.0.0.1:8080/api/render >"$1.tmp"; rm -f "$1.req"; mv "$1.tmp" "$1.code"' _ "$id"
+    fi
     for _ in $(seq 1 400); do
         docker exec "$LOCAL_CONTAINER" test -f "$id.code" && break
         sleep 0.3
@@ -455,20 +503,56 @@ exec_render() {
     printf '%s\n' "${code:-000}"
 }
 
+# The lite image is built from a local clone, or pulled; hmctsprod needs the ACR login the
+# licensed image does. Any other registry is left to docker run.
+local_prepare_lite_image() {
+    if [[ -n "$LITE_BUILD" ]]; then
+        [[ -f "$LITE_BUILD/Dockerfile" ]] || die "DOCMOSIS_LITE_BUILD=$LITE_BUILD has no Dockerfile; point it at a dtsse-doc-render clone"
+        docker build -q -t "$LITE_BUILD_TAG" "$LITE_BUILD" >/dev/null || die "couldn't build $LITE_BUILD_TAG from $LITE_BUILD"
+    elif [[ "$LOCAL_IMAGE" == hmctsprod.azurecr.io/* ]]; then
+        if ! local_pull; then
+            [[ -n "$(local_image_id)" ]] || die "couldn't log in to hmctsprod and pull $LOCAL_IMAGE; until it is published, set DOCMOSIS_LITE_BUILD=<path to a dtsse-doc-render clone>"
+            warn "couldn't check hmctsprod for a newer $LOCAL_IMAGE; using the copy already pulled"
+        fi
+    fi
+}
+
+local_run_lite() {
+    docker run -d --name "$LOCAL_CONTAINER" -p "127.0.0.1:$LOCAL_HTTP_PORT:8080" "$LOCAL_IMAGE" >/dev/null \
+        || die "couldn't start $LOCAL_CONTAINER"
+    docker exec "$LOCAL_CONTAINER" mkdir -p "$LOCAL_TEMPLATES" || die "couldn't create $LOCAL_TEMPLATES in $LOCAL_CONTAINER"
+    for _ in $(seq 1 30); do
+        if docker exec "$LOCAL_CONTAINER" node -e "$LITE_NODE_PROBE" >/dev/null 2>&1; then
+            printf 'local Docmosis (lite) running, %s\n' "$(local_describe "$(local_endpoint)")"
+            return
+        fi
+        local_running || die "$LOCAL_CONTAINER exited: $(docker logs --tail 20 "$LOCAL_CONTAINER" 2>&1)"
+        sleep 1
+    done
+    die "$LOCAL_CONTAINER wasn't ready on /api/status within 30 seconds: $(docker logs --tail 20 "$LOCAL_CONTAINER" 2>&1)"
+}
+
 local_start() {
-    require_tools docker az jq curl openssl
+    if [[ "$LOCAL_LITE" == true ]]; then
+        require_tools docker jq curl
+        [[ -n "$LITE_BUILD" || "$LOCAL_IMAGE" != hmctsprod.azurecr.io/* ]] || require_tools az
+    else
+        require_tools docker az jq curl openssl
+    fi
     local_lock
     local_start_locked
     local_unlock
 }
 
 local_start_locked() {
-    if ! local_pull; then
+    if [[ "$LOCAL_LITE" == true ]]; then
+        local_prepare_lite_image
+    elif ! local_pull; then
         [[ -n "$(local_image_id)" ]] || die "couldn't log in to hmctsprod and pull $LOCAL_IMAGE"
         warn "couldn't check hmctsprod for a newer $LOCAL_IMAGE; using the copy already pulled"
     fi
     if local_running; then
-        if [[ -z "$(local_access_key)" ]]; then
+        if [[ "$LOCAL_LITE" == false && -z "$(local_access_key)" ]]; then
             printf '%s is running without DOCMOSIS_ACCESSKEY; recreating it\n' "$LOCAL_CONTAINER"
         elif [[ "$(docker inspect -f '{{.Image}}' "$LOCAL_CONTAINER")" == "$(local_image_id)" ]]; then
             printf 'local Docmosis already running, %s\n' "$(local_describe "$(local_endpoint)")"
@@ -479,7 +563,11 @@ local_start_locked() {
     fi
     docker rm -f "$LOCAL_CONTAINER" >/dev/null 2>&1 || true
     mkdir -p "$LOCAL_STATE"
-    rm -f "$LOCAL_STATE/endpoint"
+    rm -f "$LOCAL_STATE/$LOCAL_ENDPOINT_FILE"
+    if [[ "$LOCAL_LITE" == true ]]; then
+        local_run_lite
+        return
+    fi
     DOCMOSIS_KEY="$(az keyvault secret show --vault-name "$LOCAL_LICENCE_VAULT" --name "$LOCAL_LICENCE_SECRET" --query value -o tsv)" \
         || die "couldn't read the licence key $LOCAL_LICENCE_SECRET from $LOCAL_LICENCE_VAULT"
     # Renders read the access key back from the container, so it isn't kept here. Tornado
@@ -520,18 +608,28 @@ local_render() {
     require_tools docker jq curl
     # The check is repeated under the lock: another render may have started it meanwhile.
     if ! local_running; then
-        require_tools az openssl
+        if [[ "$LOCAL_LITE" == true ]]; then
+            [[ -n "$LITE_BUILD" || "$LOCAL_IMAGE" != hmctsprod.azurecr.io/* ]] || require_tools az
+        else
+            require_tools az openssl
+        fi
         local_lock
         local_running || local_start_locked
         local_unlock
     fi
     local_connect
     base="$(basename "$file")"
-    LOCAL_TEMPLATE="$(sha8 "$file")-$$-$base"
     [[ "$URL" != exec ]] || LOCAL_EXEC_FILES="/tmp/docmosis-render-$$"
-    docker cp -q "$file" "$LOCAL_CONTAINER:$POD_TEMPLATES/$LOCAL_TEMPLATE" || die "couldn't copy $base into $LOCAL_CONTAINER"
     out="${OUT:-${base%.*}.$FORMAT}"
-    body="$(jq -c --arg t "$LOCAL_TEMPLATE" --argjson dev "$DEV" --arg f "$FORMAT" '{templateName: $t, outputName: ("render." + $f), devMode: $dev, data: .}' "$data")"
+    if [[ "$LOCAL_LITE" == true ]]; then
+        # dtsse-doc-render takes the template inline, so there is nothing to copy in or clean
+        # up. --rawfile keeps the base64 out of argv, which a large template would overflow.
+        body="$(jq -c --rawfile t <(base64 <"$file") --argjson dev "$DEV" --arg f "$FORMAT" '{templateBase64: $t, outputName: ("render." + $f), devMode: $dev, data: .}' "$data")"
+    else
+        LOCAL_TEMPLATE="$(sha8 "$file")-$$-$base"
+        docker cp -q "$file" "$LOCAL_CONTAINER:$LOCAL_TEMPLATES/$LOCAL_TEMPLATE" || die "couldn't copy $base into $LOCAL_CONTAINER"
+        body="$(jq -c --arg t "$LOCAL_TEMPLATE" --argjson dev "$DEV" --arg f "$FORMAT" '{templateName: $t, outputName: ("render." + $f), devMode: $dev, data: .}' "$data")"
+    fi
     # A new file is only found on Docmosis's next scan of its templates folder.
     for _ in $(seq 1 20); do
         if [[ "$URL" == exec ]]; then
@@ -565,7 +663,7 @@ case "$COMMAND" in
             stop)
                 require_tools docker
                 local_lock
-                rm -f "$LOCAL_STATE/endpoint"
+                rm -f "$LOCAL_STATE/$LOCAL_ENDPOINT_FILE"
                 if docker rm -f "$LOCAL_CONTAINER" >/dev/null 2>&1; then echo "stopped"; else echo "not running"; fi
                 local_unlock ;;
             *) die "local takes start, render, status or stop" ;;

@@ -63,6 +63,35 @@ Local Docmosis (Docker):
 
 The CLI reads the licence and access keys itself and never prints them.
 
+## Render without a licence
+
+`--lite` renders on [dtsse-doc-render](https://github.com/hmcts/dtsse-doc-render), an unlicensed service that speaks Docmosis's render API, instead of the licensed Docmosis. It needs no licence, Key Vault, `az` login or access key, and is ready in seconds. It runs as container `docmosis-lite` on `127.0.0.1:18088` (`DOCMOSIS_LITE_PORT`), beside `docmosis-local`.
+
+It supports the subset of the template language in dtsse-doc-render's `docs/template-language.md`, which was verified against a licensed Docmosis. A lite render is not proof that a template works in Docmosis: the hmcts/docmosis PR check stays the gate.
+
+```sh
+bin/docmosis local start --lite
+bin/docmosis local render --lite T.docx payload.json --format pdf --out out.pdf
+bin/docmosis local status --lite
+bin/docmosis local stop --lite
+```
+
+Set `DOCMOSIS_LOCAL_BACKEND=lite` to make `--lite` the default. The image is `hmctsprod.azurecr.io/dtsse/doc-render:latest`; `DOCMOSIS_LITE_IMAGE` overrides it. To run a dtsse-doc-render clone instead, build it with `DOCMOSIS_LITE_BUILD`:
+
+```sh
+DOCMOSIS_LITE_BUILD=~/src/dtsse-doc-render bin/docmosis local start --lite
+```
+
+`local render --lite` sends the template inline in the request, so nothing is copied into the container.
+
+To see where lite and the licensed Docmosis differ, render the same template on both and compare the text:
+
+```sh
+bin/docmosis local render T.docx p.json --format docx --out a.docx
+bin/docmosis local render --lite T.docx p.json --format docx --out b.docx
+diff <(bin/docmosis text a.docx | cut -f2-) <(bin/docmosis text b.docx | cut -f2-)
+```
+
 ## Tests
 
 The library tests need `zip` and `unzip`.
