@@ -226,7 +226,7 @@ window.addEventListener('message', (event: MessageEvent<HostToWebview>) => {
       status.textContent = 'Render failed';
       pdf.setPlaceholder(undefined);
       showError(msg.message);
-      serverErrors = new Map(msg.fields.map((f) => [f, msg.reason ?? msg.message]));
+      serverErrors = new Map(msg.fields.map((f) => [f.path, f.reason]));
       markFields(true);
       break;
     case 'invalid':

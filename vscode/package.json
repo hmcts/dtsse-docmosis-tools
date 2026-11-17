@@ -60,11 +60,6 @@
     "configuration": {
       "title": "HMCTS Template Preview",
       "properties": {
-        "hmctsTemplatePreview.docRenderUrl": {
-          "type": "string",
-          "default": "https://doc-render.aat.platform.hmcts.net",
-          "markdownDescription": "The dtsse-doc-render service that renders the preview. The default is the AAT instance, which is only reachable over the VPN. Passed to the CLI as `DOC_RENDER_URL`."
-        },
         "hmctsTemplatePreview.docmosisCli": {
           "type": "string",
           "default": "",

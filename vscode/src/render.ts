@@ -38,8 +38,6 @@ export interface RenderOptions {
   docx: string;
   data: JsonObject;
   dev: boolean;
-  /** The dtsse-doc-render service, passed to the CLI as DOC_RENDER_URL. Empty uses the CLI default. */
-  docRenderUrl?: string;
   /** Folder for the temporary data JSON and the PDF. */
   outDir: string;
   cwd: string;
@@ -55,7 +53,7 @@ export interface RenderResult {
 
 /** Writes the data to a temp JSON and renders the template through `docmosis render-file`, which sends it to the hosted dtsse-doc-render. */
 export async function renderPdf(options: RenderOptions): Promise<RenderResult> {
-  const { cli, docx, data, dev, docRenderUrl, outDir, cwd, log, signal } = options;
+  const { cli, docx, data, dev, outDir, cwd, log, signal } = options;
   await fs.mkdir(outDir, { recursive: true });
   const stem = renderStem(docx);
   const dataPath = path.join(outDir, `${stem}.data.json`);
@@ -71,7 +69,7 @@ export async function renderPdf(options: RenderOptions): Promise<RenderResult> {
       reject(new RenderAbortedError('Render cancelled'));
       return;
     }
-    const child = spawn(cli, args, { cwd, env: docRenderUrl ? { ...process.env, DOC_RENDER_URL: docRenderUrl } : process.env, stdio: ['ignore', 'pipe', 'pipe'], ...(signal ? { signal } : {}) });
+    const child = spawn(cli, args, { cwd, stdio: ['ignore', 'pipe', 'pipe'], ...(signal ? { signal } : {}) });
     let stderr = '';
     child.stdout.on('data', (chunk: Buffer) => log?.(chunk.toString()));
     child.stderr.on('data', (chunk: Buffer) => {

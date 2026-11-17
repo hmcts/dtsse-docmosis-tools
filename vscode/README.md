@@ -49,7 +49,7 @@ Open this folder in VS Code and press F5 to start an Extension Development Host,
 | Script | |
 |---|---|
 | `npm run build` | Type-check, then bundle `dist/extension.js` (node) and `dist/webview.js` (browser) with esbuild, and copy the pdf.js worker and the CLI (`../bin/docmosis`, `../lib/docx.mjs`) into `cli/`. |
-| `npm test` | Unit tests (vitest). The test against the real Docmosis structure file skips when `/tmp/pl-vm/v1-structure.json` is absent; the library test uses `../lib/docx.mjs` unless `DOCMOSIS_LIB` names another. |
+| `npm test` | Unit tests (vitest). The library test uses `../lib/docx.mjs` unless `DOCMOSIS_LIB` names another. |
 | `npm run test:integration` | Opens the editor in a real VS Code under `xvfb-run` with a fake CLI and `../lib/docx.mjs` (`@vscode/test-electron`; downloads VS Code on first run). |
 | `npm run package` | Build, then write `hmcts-template-preview.vsix`. |
 
@@ -59,7 +59,6 @@ Source layout: `src/schema.ts` infers the schema from an instruction tree (pure)
 
 | Setting | Default | |
 |---|---|---|
-| `hmctsTemplatePreview.docRenderUrl` | `https://doc-render.aat.platform.hmcts.net` | The dtsse-doc-render service that renders the preview; passed to the CLI as `DOC_RENDER_URL`. |
 | `hmctsTemplatePreview.docmosisCli` | empty | Path to the `docmosis` CLI; empty uses the CLI bundled with the extension. `${workspaceFolder}` is replaced by the workspace folder. The template library is loaded from `../lib/docx.mjs` relative to the script, as in a checkout of this repo. |
 
 ## Limits

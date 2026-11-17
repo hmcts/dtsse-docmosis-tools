@@ -2,41 +2,26 @@ import { normaliseQuotes, schemaPaths, type ObjectSchema } from './schema';
 import type { InstructionNode } from './tree';
 
 export interface RenderFailure {
-  /** The instruction Docmosis names after `Field <<...>>`. */
-  instruction?: string;
-  /** The expression in `Unable to evaluate ... expression [...]`. */
-  expression?: string;
-  /** What Docmosis said was wrong, after the expression. */
-  reason?: string;
+  /** What dtsse-doc-render said was wrong with the instruction. */
+  reason: string;
+  /** The text between `<<` and `>>`. */
+  instruction: string;
+  /** The package part the instruction is in, such as `word/document.xml`. */
+  part: string;
+  /** Where in the part, such as `paragraph 2`. */
+  where: string;
 }
 
-/** Pulls the failing instruction out of the CLI's error text, which usually embeds Docmosis's JSON reply. */
-export function parseRenderFailure(text: string): RenderFailure {
-  const detail = shortMessage(text);
-  const failure: RenderFailure = {};
-  const instruction = /Field\s*<<([\s\S]*?)>>(?=\s|$)/.exec(detail);
-  if (instruction) failure.instruction = instruction[1]!;
-  const expression = /Unable to evaluate [\w ]*?expression\s*\[([\s\S]*?)\]:\s*([\s\S]*)$/.exec(detail);
-  if (expression) {
-    failure.expression = expression[1]!;
-    failure.reason = expression[2]!.trim();
-  }
-  return failure;
-}
+const ERROR_LINE = /^(.*): <<(.*)>> \((\S+?), (.*)\)$/;
 
-function shortMessage(text: string): string {
-  const start = text.indexOf('{');
-  if (start >= 0) {
-    try {
-      const parsed: unknown = JSON.parse(text.slice(start, text.lastIndexOf('}') + 1));
-      if (typeof parsed === 'object' && parsed !== null && 'shortMsg' in parsed && typeof parsed.shortMsg === 'string') {
-        return parsed.shortMsg;
-      }
-    } catch {
-      // not JSON; use the text as it is
-    }
+/** Reads each `<reason>: <<instruction>> (part, where)` line of the CLI's error text; lines in another shape are skipped. */
+export function parseRenderFailures(text: string): RenderFailure[] {
+  const failures: RenderFailure[] = [];
+  for (const line of text.split('\n')) {
+    const match = ERROR_LINE.exec(line.trim());
+    if (match) failures.push({ reason: match[1]!, instruction: match[2]!, part: match[3]!, where: match[4]! });
   }
-  return text;
+  return failures;
 }
 
 export interface InstructionRefs {
@@ -66,15 +51,10 @@ const canonical = (text: string): string => normaliseQuotes(text).replace(/\s+/g
 
 /** The schema paths read by the instruction a failure names, comparing with quote style and spacing ignored. */
 export function fieldsForFailure(failure: RenderFailure, index: InstructionRefs[]): string[] {
-  const instruction = failure.instruction === undefined ? undefined : canonical(failure.instruction);
-  const expression = failure.expression === undefined ? undefined : canonical(failure.expression);
-  if (!instruction && !expression) return [];
+  const instruction = canonical(failure.instruction);
   const found = new Set<string>();
   for (const entry of index) {
-    const text = canonical(entry.text);
-    const exact = instruction !== undefined && (text === instruction);
-    const contains = expression !== undefined && text.includes(expression);
-    if (exact || contains) entry.paths.forEach((p) => found.add(p));
+    if (canonical(entry.text) === instruction) entry.paths.forEach((p) => found.add(p));
   }
   return [...found];
 }

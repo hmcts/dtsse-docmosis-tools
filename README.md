@@ -40,7 +40,7 @@ Template files (no network):
   pack <dir> <file.docx>      zip an unpacked folder back into a .docx
 
 Docmosis instance (AAT by default, or --preview <n>, --url, --port-forward):
-  status | probe              check the instance answers; which REST endpoints it offers
+  status                      check the instance answers
   structure <template-name>   the instance's view of a stored template's fields
   sample <template-name>      the instance's placeholder data for a stored template
   render <template-name> <data.json> [--out file] [--dev] [--format pdf|docx]
@@ -50,7 +50,6 @@ Docmosis instance (AAT by default, or --preview <n>, --url, --port-forward):
 Hosted render service (dtsse-doc-render in AAT, VPN only):
   render-file <file.docx> <data.json> [--out file] [--format F] [--dev]
                               render a template file from your machine; F is pdf, docx, doc, odt, html or txt
-  render-status               whether the service is up
 ```
 
 `docmosis --help` has every option and example.
@@ -60,7 +59,6 @@ Hosted render service (dtsse-doc-render in AAT, VPN only):
 `render-file` renders a template on your machine, with no upload step, on [dtsse-doc-render](https://github.com/hmcts/dtsse-doc-render): a hosted service in AAT that speaks Docmosis's render API without a Docmosis licence. It is at `https://doc-render.aat.platform.hmcts.net` (override with `DOC_RENDER_URL`), is reachable only over the VPN, and needs no access key or `az` login. The template is sent with each request, so an edited file is never stale, and the service has no template store. `render <template-name>` stays for the templates stored in AAT's Docmosis; `render-file` is the one for a file you are editing.
 
 ```sh
-bin/docmosis render-status
 bin/docmosis render-file T.docx payload.json                          # T.pdf
 bin/docmosis render-file T.docx payload.json --format docx --out out.docx
 bin/docmosis render-file T.docx payload.json --dev                    # field errors rendered into the document
@@ -72,8 +70,8 @@ A failed render prints the service's message and exits 1. If the host can't be r
 ### Limits
 
 - It renders the subset of the template language in dtsse-doc-render's `docs/template-language.md`, which was checked against Docmosis. A render there is not proof that a template works in Docmosis: the hmcts/docmosis PR check stays the gate. For Docmosis itself, `put` the template into your PR's preview pod and `render --preview <n>`.
-- The service takes the template inline, as JSON with base64 or, for a template over about 15 MB, as multipart; the request body is limited to 50 MB.
-- `render-file` only needs the service; `structure`, `sample` and `probe` are Docmosis calls and the service doesn't implement them.
+- The request body is limited to 50 MB.
+- `render-file` only needs the service, always uses it (the `--url`, `--preview`, `--port-forward`, `--pod-key`, `--vault`, `--secret` and `--context` options are refused), and checks that the output is a real document before reporting success; `structure` and `sample` are Docmosis calls and the service doesn't implement them.
 
 ## Tests
 

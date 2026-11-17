@@ -25,14 +25,18 @@ require_tools() {
     for t in "$@"; do command -v "$t" >/dev/null || die "$t not on PATH"; done
 }
 
-# For hostnames that only resolve over the VPN.
-require_internal_dns() {
-    local host="$1"
+vpn_down_die() { die "$1: the VPN is probably down; run /cft-vpn or f5-cli status"; }
+
+# Dies unless the host of <url> resolves, when it is a VPN-only name.
+require_vpn_for() {
+    local host="${1#*://}"
+    host="${host%%[:/]*}"
+    [[ "$host" == *.platform.hmcts.net || "$host" == *.internal ]] || return 0
     if command -v getent >/dev/null; then
         getent hosts "$host" >/dev/null 2>&1
     else
         dscacheutil -q host -a name "$host" 2>/dev/null | grep -q ip_address
-    fi || die "cannot resolve $host: connect the VPN (/cft-vpn)."
+    fi || vpn_down_die "cannot resolve $host"
 }
 
 DEFAULT_URL="https://docmosis.aat.platform.hmcts.net"
@@ -46,9 +50,6 @@ POD_TEMPLATES="/home/docmosis/templates"
 
 DOC_RENDER_URL="${DOC_RENDER_URL:-https://doc-render.aat.platform.hmcts.net}"
 RENDER_FORMATS="pdf docx doc odt html txt"
-# Above this, a template is sent as a multipart file, not as base64 in JSON, which adds a
-# third to its size.
-INLINE_LIMIT_BYTES=$((20 * 1024 * 1024))
 
 usage() {
     cat >&2 <<'EOF'
@@ -73,7 +74,6 @@ Template files (no network):
 
 Docmosis instance:
   status                         check the instance answers
-  probe                          which REST endpoints the instance offers
   structure <template-name>      the instance's view of a stored template's fields
   sample <template-name>         the instance's placeholder data for a stored template,
                                  the data the hmcts/docmosis PR check renders with
@@ -92,8 +92,8 @@ Hosted render service (dtsse-doc-render in AAT; VPN only, no access key):
                                  odt, html or txt; a docx can be read with text and diff.
                                  --dev renders field errors into the document instead of
                                  failing. DOC_RENDER_URL overrides the service
-                                 (default https://doc-render.aat.platform.hmcts.net)
-  render-status                  whether the service is up
+                                 (default https://doc-render.aat.platform.hmcts.net).
+                                 The instance options below don't apply to it
   It renders the subset of Docmosis in dtsse-doc-render's docs/template-language.md, so a
   render there doesn't prove a template works in Docmosis: the hmcts/docmosis PR check
   stays the gate. If it can't be reached, the VPN is probably down (/cft-vpn).
@@ -112,8 +112,6 @@ Instance options (or set DOCMOSIS_URL):
                                  release name finds its pod by app.kubernetes.io/instance
   --context NAME                 kubectl context for the cluster options and put
                                  (default cft-preview-00-aks)
-  --api-path PATH                REST path prefix: /rs for --url (AAT's ingress), /api
-                                 through a port-forward, where /rs is the web console
 
 Template names are the file names in hmcts/rdo-docmosis, e.g. CV-PCS-CLM-ENG-Claim-Pack.docx.
 
@@ -139,21 +137,21 @@ OUT=""
 DEV=false
 FORMAT=pdf
 API_PATH=""
+INSTANCE_OPT=""
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
         -h|--help) usage; exit 0 ;;
-        --url) URL="$2"; shift 2 ;;
-        --vault) VAULT="$2"; shift 2 ;;
-        --secret) SECRET="$2"; shift 2 ;;
-        --context) KCTX="$2"; shift 2 ;;
-        --port-forward) FORWARD="$2"; shift 2 ;;
-        --pod-key) POD_KEY="$2"; shift 2 ;;
-        --preview) PREVIEW="$2"; shift 2 ;;
+        --url) INSTANCE_OPT="--url"; URL="$2"; shift 2 ;;
+        --vault) INSTANCE_OPT="--vault"; VAULT="$2"; shift 2 ;;
+        --secret) INSTANCE_OPT="--secret"; SECRET="$2"; shift 2 ;;
+        --context) INSTANCE_OPT="--context"; KCTX="$2"; shift 2 ;;
+        --port-forward) INSTANCE_OPT="--port-forward"; FORWARD="$2"; shift 2 ;;
+        --pod-key) INSTANCE_OPT="--pod-key"; POD_KEY="$2"; shift 2 ;;
+        --preview) INSTANCE_OPT="--preview"; PREVIEW="$2"; shift 2 ;;
         --out) OUT="$2"; shift 2 ;;
         --dev) DEV=true; shift ;;
         --format) FORMAT="$2"; shift 2 ;;
-        --api-path) API_PATH="$2"; shift 2 ;;
         *) ARGS+=("$1"); shift ;;
     esac
 done
@@ -162,6 +160,7 @@ COMMAND="${1:-}"
 [[ -n "$COMMAND" ]] || { usage; exit 2; }
 shift
 if [[ "$COMMAND" == render-file ]]; then
+    [[ -z "$INSTANCE_OPT" ]] || die "render-file always uses dtsse-doc-render (DOC_RENDER_URL), so $INSTANCE_OPT doesn't apply; for real Docmosis use: docmosis render <name> <data.json> --preview <n>"
     [[ " $RENDER_FORMATS " == *" $FORMAT "* ]] || die "--format is one of: $RENDER_FORMATS"
 else
     [[ "$FORMAT" == pdf || "$FORMAT" == docx ]] || die "--format is pdf or docx"
@@ -175,11 +174,15 @@ fi
 
 docx() { node "$LIB/docx.mjs" "$@"; }
 
-# A rendered PDF starts with %PDF, and a .docx (a zip) with PK.
+# Whether file $1 holds a rendered $FORMAT, by its leading bytes (html and txt have none, and
+# are checked by content type). $2 is the response content type.
 is_output() {
     case "$FORMAT" in
-        docx) [[ "$(head -c 2 "$1" 2>/dev/null)" == PK ]] ;;
-        *) [[ "$(head -c 4 "$1" 2>/dev/null)" == %PDF ]] ;;
+        pdf) [[ "$(head -c 4 "$1" 2>/dev/null)" == %PDF ]] ;;
+        docx|odt) [[ "$(head -c 2 "$1" 2>/dev/null)" == PK ]] ;;
+        doc) [[ "$(head -c 4 "$1" 2>/dev/null | od -An -tx1 | tr -d ' \n')" == d0cf11e0 ]] ;;
+        html) [[ "${2:-}" == text/html* ]] ;;
+        txt) [[ "${2:-}" == text/plain* ]] ;;
     esac
 }
 k() { kubectl --context "$KCTX" "$@"; }
@@ -201,11 +204,9 @@ resolve_pod() {
 
 PF_PID=""
 PF_LOG=""
-TMP_FILES=()
 cleanup() {
     [[ -z "$PF_PID" ]] || kill "$PF_PID" 2>/dev/null || true
     [[ -z "$PF_LOG" ]] || rm -f "$PF_LOG"
-    [[ ${#TMP_FILES[@]} -eq 0 ]] || rm -f "${TMP_FILES[@]}"
 }
 trap cleanup EXIT
 
@@ -232,12 +233,9 @@ forward() {
 }
 
 connect() {
-    local pod="" host
+    local pod=""
     require_tools jq curl
-    if [[ -z "$PREVIEW$FORWARD" ]]; then
-        host="${URL#*://}"; host="${host%%[:/]*}"
-        [[ "$host" != *.platform.hmcts.net && "$host" != *.internal ]] || require_internal_dns "$host"
-    fi
+    [[ -n "$PREVIEW$FORWARD" ]] || require_vpn_for "$URL"
     if [[ -n "$POD_KEY" ]]; then
         require_tools kubectl
         pod="$(resolve_pod "$POD_KEY")"
@@ -320,35 +318,25 @@ put_template() {
 # is no key and nothing to clean up on the service. Errors come back as
 # {succeeded:false, shortMsg, longMsg}.
 render_file() {
-    local file="$1" data="$2" base out req code rc=0 host
+    local file="$1" data="$2" base out reply code type rc=0
     [[ -f "$file" && "$file" == *.docx && -f "$data" ]] || die "render-file needs a .docx file and a data .json file"
-    require_tools jq curl base64
+    require_tools jq curl
     jq -e . "$data" >/dev/null 2>&1 || die "$data is not valid JSON"
-    host="${DOC_RENDER_URL#*://}"; host="${host%%[:/]*}"
-    [[ "$host" != *.platform.hmcts.net ]] || require_internal_dns "$host"
+    require_vpn_for "$DOC_RENDER_URL"
     base="$(basename "$file")"
     out="${OUT:-${base%.*}.$FORMAT}"
-    req="$(mktemp)"
-    TMP_FILES+=("$req" "$req.t")
-    if [[ "$(wc -c <"$file" | tr -d ' ')" -gt $((INLINE_LIMIT_BYTES * 3 / 4)) ]]; then
-        code="$(curl -sS -m 120 -o "$out" -w '%{http_code}' -F "templateFile=@$file" \
-            -F "data=@$data;type=application/json" -F "outputFormat=$FORMAT" \
-            -F "devMode=$DEV" "$DOC_RENDER_URL/api/render")" || rc=$?
-    else
-        # --rawfile keeps the base64 out of argv, which a large template would overflow.
-        base64 <"$file" | tr -d '\n' >"$req.t"
-        jq -c --rawfile t "$req.t" --argjson dev "$DEV" --arg f "$FORMAT" \
-            '{templateBase64: $t, outputName: ("render." + $f), outputFormat: $f, devMode: $dev, data: .}' "$data" >"$req"
-        code="$(curl -sS -m 120 -X POST -H 'Content-Type: application/json' --data-binary @"$req" \
-            -o "$out" -w '%{http_code}' "$DOC_RENDER_URL/api/render")" || rc=$?
-    fi
+    reply="$(curl -sS -m 120 -o "$out" -w '%{http_code} %{content_type}' -F "templateFile=@$file" \
+        -F "data=@$data;type=application/json" -F "outputFormat=$FORMAT" \
+        -F "devMode=$DEV" "$DOC_RENDER_URL/api/render")" || rc=$?
     if [[ "$rc" -ne 0 ]]; then
         rm -f "$out"
         case "$rc" in
-            6|7|28|35|60) die "cannot reach $DOC_RENDER_URL (curl exit $rc): the VPN is probably down; run /cft-vpn or f5-cli status" ;;
+            6|7|28|35|60) vpn_down_die "cannot reach $DOC_RENDER_URL (curl exit $rc)" ;;
             *) die "request to $DOC_RENDER_URL failed (curl exit $rc)" ;;
         esac
     fi
+    code="${reply%% *}"
+    type="${reply#* }"
     if [[ "$code" != 200 || ! -s "$out" ]]; then
         printf 'render failed (HTTP %s):\n' "$code" >&2
         if jq -e '.shortMsg // .longMsg' "$out" >/dev/null 2>&1; then
@@ -359,18 +347,13 @@ render_file() {
         rm -f "$out"
         exit 1
     fi
+    if ! is_output "$out" "$type"; then
+        printf 'render failed: the response is not a %s (HTTP %s, content-type %s); it starts:\n%s\n' \
+            "$FORMAT" "$code" "${type:-none}" "$(head -c 200 "$out" | tr -c '[:print:]\n' '?')" >&2
+        rm -f "$out"
+        exit 1
+    fi
     printf 'rendered %s (%s bytes)\n' "$out" "$(wc -c <"$out" | tr -d ' ')"
-}
-
-render_status() {
-    local host body
-    require_tools jq curl
-    host="${DOC_RENDER_URL#*://}"; host="${host%%[:/]*}"
-    [[ "$host" != *.platform.hmcts.net ]] || require_internal_dns "$host"
-    body="$(curl -sS -m 20 "$DOC_RENDER_URL/rs/status")" \
-        || die "cannot reach $DOC_RENDER_URL: the VPN is probably down; run /cft-vpn or f5-cli status"
-    jq -e '.ready == true' >/dev/null 2>&1 <<<"$body" || die "$DOC_RENDER_URL is not ready: $body"
-    echo "ready, $DOC_RENDER_URL"
 }
 
 case "$COMMAND" in
@@ -379,7 +362,6 @@ esac
 
 case "$COMMAND" in
     render-file) render_file "${1:-}" "${2:-}" ;;
-    render-status) render_status ;;
     fields|check|text|tree)
         [[ -e "${1:-}" ]] || die "$COMMAND needs a .docx file or an unpacked folder"
         docx "$COMMAND" "$1" ;;
@@ -398,12 +380,6 @@ case "$COMMAND" in
     status)
         connect
         curl -sS -m 20 -o /dev/null -w "%{http_code} $URL\n" "$URL$API_PATH/status" ;;
-    probe)
-        connect
-        for p in status ping listTemplates getTemplateStructure getSampleData render uploadTemplate addTemplate; do
-            code="$(api "$API_PATH/$p" '{}' -s -m 20 -o /dev/null -w '%{http_code}' 2>/dev/null || true)"
-            printf '  %-22s %s\n' "$API_PATH/$p" "$code"
-        done ;;
     structure)
         [[ -n "${1:-}" ]] || die "structure needs a template name"
         connect
