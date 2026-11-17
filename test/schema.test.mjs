@@ -251,16 +251,57 @@ test('an index reads an item of the list, and an index on $this is not placed', 
     assert.equal(root.properties.items.item.properties.x.kind, 'string');
     assert.equal(root.properties.tags.kind, 'array');
     assert.deepEqual(Object.keys(root.properties.rows.item.properties), ['y']);
-    assert.deepEqual(warnings, ['"$this[0].x" indexes something that is not a list; ignored.']);
+    assert.deepEqual(warnings, ['"$this[0].x" in "rs_rows" indexes something that is not a list; ignored.']);
     assert.deepEqual(refs.map((r) => r.paths), [['items[].x'], ['tags'], ['rows'], ['rows[].y']]);
 });
 
-test('a repeat over $this[0] names the instruction as written, and warns once', () => {
+test('a repeat over $this[0] names the instruction and the repeat it sits in, and lists what it holds', () => {
     const { root, warnings } = inferSchema([
         rep('items', [{ type: 'repeat', text: 'rs_$this[0]', dataRefs: ['$this[0]'], children: [field('label')] }]),
     ]);
     assert.deepEqual(Object.keys(root.properties.items.item.properties), []);
-    assert.deepEqual(warnings, ['"$this[0]" indexes something that is not a list; ignored.']);
+    assert.deepEqual(warnings, [
+        '"$this[0]" in "rs_items" indexes something that is not a list; ignored.',
+        unplacedWarning('rs_$this[0]', 'label'),
+    ]);
+});
+
+test('the same $this[0] in two repeats gives one warning for each', () => {
+    const { warnings } = inferSchema([
+        rep('a', [field('$this[0].x')]),
+        rep('b', [field('$this[0].x')]),
+    ]);
+    assert.deepEqual(warnings, [
+        '"$this[0].x" in "rs_a" indexes something that is not a list; ignored.',
+        '"$this[0].x" in "rs_b" indexes something that is not a list; ignored.',
+    ]);
+});
+
+test('a bare $this at the top level is a whole scope, not an index', () => {
+    const { warnings } = inferSchema([field('$this')]);
+    assert.deepEqual(warnings, ['"$this" names a whole scope, not a field; ignored.']);
+});
+
+test('a repeat over $parent at the top level still lists the names inside it', () => {
+    const { warnings } = inferSchema([{ type: 'repeat', text: 'rs_$parent.list', dataRefs: ['$parent.list'], children: [field('x')] }]);
+    assert.deepEqual(warnings, ['`$parent.list` is outside any repeat, so it is always empty.', unplacedWarning('rs_$parent.list', 'x')]);
+});
+
+test('a repeat over a name already used as an object still lists the names inside it', () => {
+    const { warnings } = inferSchema([
+        field('a.b'),
+        { type: 'repeat', text: 'rs_a', dataRefs: ['a'], children: [field('x')] },
+    ]);
+    assert.deepEqual(warnings, ['"a" is used as both an object and a repeat; its repeat rows are ignored.', unplacedWarning('rs_a', 'x')]);
+});
+
+test('a repeat nested in a repeat over rs_items[0] adds no warning of its own', () => {
+    const { warnings } = inferSchema([
+        { type: 'repeat', text: 'rs_items[0]', dataRefs: ['items[0]'], children: [
+            { type: 'repeat', text: 'rs_sub', dataRefs: ['sub'], children: [field('y')] },
+        ] },
+    ]);
+    assert.deepEqual(warnings, ['"rs_items[0]" repeats over an item of the list "items", and the schema doesn\'t model a list inside a list.']);
 });
 
 test('names written with spaces around the dot are recognised in conditions, dates, blank tests and repeat targets', () => {
@@ -383,7 +424,7 @@ test('names inside an unnamed repeat over an unplaceable list are warned about o
         ] },
     ]);
     assert.deepEqual(Object.keys(root.properties), ['top']);
-    assert.deepEqual(warnings, [unplacedWarning('rs_inner', 'x'), unplacedWarning('rs_{$list}', 'name, inner, $this.role')]);
+    assert.deepEqual(warnings, [unplacedWarning('rs_{$list}', 'name, inner, x, $this.role')]);
     assert.deepEqual(refs.map((r) => r.paths), [['top']]);
 });
 
