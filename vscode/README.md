@@ -4,10 +4,10 @@ A VS Code extension that previews Docmosis `.docx` templates.
 
 - Reads the template's instructions (fields, conditions, repeats and expressions) and infers the data it needs.
 - Builds an input form from that: text and date inputs, checkboxes and repeat sections with add and remove row. Each input shows which `cs_`/`cr_` block it controls.
-- Renders on the hosted [dtsse-doc-render](https://github.com/hmcts/dtsse-doc-render) service in AAT and shows the PDF beside the form. It re-renders 600 ms after you stop typing, and when the `.docx` changes on disk.
+- Renders on the hosted [dtsse-doc-render](https://github.com/hmcts/dtsse-doc-render) service and shows the PDF beside the form. It re-renders 600 ms after you stop typing, and when the `.docx` changes on disk.
 - Reports coverage: values the template uses that the data lacks, and data keys the template never uses.
 
-The extension never handles keys. It calls `docmosis render-file`, which sends the template and data to dtsse-doc-render; the service is reachable only over the VPN, so connect it first (if a render fails with "the VPN is probably down", it is not connected). The service renders a subset of Docmosis (see its `docs/template-language.md`), so a preview is not proof that a template works in Docmosis: rdo-docmosis's Template Validation pipeline, then a render on AAT's Docmosis after deploy, are the gate. The `.vsix` bundles the CLI (`bin/docmosis`) and its template library (`lib/docx.mjs`) from this repo, so it works in any workspace; template parsing uses that library, so the extension and the CLI agree on what a template contains.
+It calls `docmosis render-file`, which sends the template and data to dtsse-doc-render; the service is reachable only over the VPN, so connect it first (if a render fails with "the VPN is probably down", it is not connected). The service implements a subset of the Docmosis template language (see its `docs/template-language.md`), so a successful preview is not proof that a template works in Docmosis. The `.vsix` bundles the CLI (`bin/docmosis`) and its template library (`lib/docx.mjs`) from this repo, so it works in any workspace; template parsing uses that library, so the extension and the CLI agree on what a template contains.
 
 ## Use
 
@@ -23,7 +23,7 @@ Toolbar:
 | Dev mode | Passes `--dev` to `docmosis render-file`. |
 | Open PDF | Saves the PDF beside the data and reveals it in the Explorer. |
 
-Data is saved on every render at `<workspaceFolder>/.hmcts-template-preview/<template path>/default.json`, where `<template path>` is the template's path in the workspace without `.docx` (so `Templates/Base/X.docx` and `Templates/AAT/X.docx` keep separate data). Data saved by earlier versions under `.hmcts-template-preview/<template name>/default.json` is loaded when the new file doesn't exist yet. The folder contains a `.gitignore` with `*`, so it is never committed. The form holds only the values you supplied; missing values aren't defaulted.
+Data is saved on every render at `<workspaceFolder>/.hmcts-template-preview/<template path>/default.json`, where `<template path>` is the template's path in the workspace without `.docx` (so `a/X.docx` and `b/X.docx` keep separate data). Data saved by earlier versions under `.hmcts-template-preview/<template name>/default.json` is loaded when the new file doesn't exist yet. The folder contains a `.gitignore` with `*`, so it is never committed. The form holds only the values you supplied; missing values aren't defaulted.
 
 ## Build and install
 

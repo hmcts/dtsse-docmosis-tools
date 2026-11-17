@@ -1,6 +1,6 @@
 export type InstructionType = 'field' | 'condition' | 'repeat' | 'else' | 'comment';
 
-/** One Docmosis instruction, in the shape of the docmosis library's `instructionTree`. */
+/** One Docmosis instruction, in the shape of the template library's `instructionTree`. */
 export interface InstructionNode {
   type: InstructionType;
   text: string;

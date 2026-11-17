@@ -74,16 +74,16 @@ describe('renderPdf', () => {
     const { cli, dir } = await fakeCli(
       'while [ $# -gt 0 ]; do [ "$1" = --out ] && out="$2"; shift; done; echo "%PDF-$(basename "$(dirname "$out")")" > "$out"',
     );
-    await mkdir(join(dir, 'Base'));
-    await mkdir(join(dir, 'AAT'));
+    await mkdir(join(dir, 'A'));
+    await mkdir(join(dir, 'B'));
     const outDir = join(dir, 'out');
-    const base = await renderPdf({ cli, docx: join(dir, 'Base', 'X.docx'), data: { v: 'base' }, dev: false, outDir, cwd: dir });
-    const aat = await renderPdf({ cli, docx: join(dir, 'AAT', 'X.docx'), data: { v: 'aat' }, dev: false, outDir, cwd: dir });
-    expect(base.pdfPath).not.toBe(aat.pdfPath);
-    expect(base.dataPath).not.toBe(aat.dataPath);
+    const base = await renderPdf({ cli, docx: join(dir, 'A', 'X.docx'), data: { v: 'base' }, dev: false, outDir, cwd: dir });
+    const b = await renderPdf({ cli, docx: join(dir, 'B', 'X.docx'), data: { v: 'b' }, dev: false, outDir, cwd: dir });
+    expect(base.pdfPath).not.toBe(b.pdfPath);
+    expect(base.dataPath).not.toBe(b.dataPath);
     expect(JSON.parse(await readFile(base.dataPath, 'utf8'))).toEqual({ v: 'base' });
-    expect(JSON.parse(await readFile(aat.dataPath, 'utf8'))).toEqual({ v: 'aat' });
-    expect(renderStem(join(dir, 'Base', 'X.docx'))).toMatch(/^X-[0-9a-f]{8}$/);
+    expect(JSON.parse(await readFile(b.dataPath, 'utf8'))).toEqual({ v: 'b' });
+    expect(renderStem(join(dir, 'A', 'X.docx'))).toMatch(/^X-[0-9a-f]{8}$/);
   });
 
   it('kills the CLI and rejects with RenderAbortedError when aborted', async () => {
