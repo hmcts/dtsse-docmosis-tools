@@ -25,7 +25,9 @@ put('word/document.xml', `<?xml version="1.0"?><w:document ${W}><w:body><w:p><w:
 const fixture = path.join(tmp, 'fixture.docx');
 pack(src, fixture);
 
-const run = (...args) => spawnSync(process.execPath, [CLI, ...args], { encoding: 'utf8', cwd: tmp });
+const SPAWN_TIMEOUT_MS = 20_000;
+const TEST_TIMEOUT_MS = 30_000;
+const run = (...args) => spawnSync(process.execPath, [CLI, ...args], { encoding: 'utf8', cwd: tmp, timeout: SPAWN_TIMEOUT_MS, killSignal: 'SIGKILL' });
 
 test('--help prints the usage to stderr and exits 0', () => {
     const r = run('--help');
@@ -87,7 +89,7 @@ test('render-file checks its arguments before any request', () => {
 });
 
 test('the bin/docmosis shim runs the Node CLI', () => {
-    const r = spawnSync(SHIM, ['text', fixture], { encoding: 'utf8' });
+    const r = spawnSync(SHIM, ['text', fixture], { encoding: 'utf8', timeout: SPAWN_TIMEOUT_MS, killSignal: 'SIGKILL' });
     assert.equal(r.status, 0);
     assert.match(r.stdout, /Hello <<name>>/);
 });
@@ -95,11 +97,15 @@ test('the bin/docmosis shim runs the Node CLI', () => {
 const spawned = (cmd, args, env) =>
     new Promise((resolve) => {
         const child = spawn(cmd, args, { cwd: tmp, env: { ...process.env, ...env } });
+        const timer = setTimeout(() => child.kill('SIGKILL'), SPAWN_TIMEOUT_MS);
         let stdout = '';
         let stderr = '';
         child.stdout.on('data', (d) => (stdout += d));
         child.stderr.on('data', (d) => (stderr += d));
-        child.on('close', (status) => resolve({ status, stdout, stderr }));
+        child.on('close', (status, signal) => {
+            clearTimeout(timer);
+            resolve({ status, signal, stdout, stderr });
+        });
     });
 
 const listen = (handler) =>
@@ -108,9 +114,21 @@ const listen = (handler) =>
         server.listen(0, '127.0.0.1', () => resolve({ server, port: server.address().port }));
     });
 
+// A forward proxy as Node's fetch meets it: Node 24 tunnels even http:// targets through CONNECT,
+// later versions send the absolute URI as an ordinary request. Both end at the handler.
+const listenProxy = async (handler) => {
+    const inner = http.createServer(handler);
+    const outer = await listen(handler);
+    outer.server.on('connect', (req, socket) => {
+        socket.write('HTTP/1.1 200 Connection Established\r\n\r\n');
+        inner.emit('connection', socket);
+    });
+    return { port: outer.port, close: () => outer.server.close() };
+};
+
 const answerPdf = (res) => res.writeHead(200, { 'content-type': 'application/pdf' }).end('%PDF-1.7 ok');
 
-test('render-file sends the data file exactly as written', async () => {
+test('render-file sends the data file exactly as written', { timeout: TEST_TIMEOUT_MS }, async () => {
     const raw = '{"amount": 100.00, "id": 12345678901234567890, "k": 1, "k": 2}';
     const dataFile = path.join(tmp, 'raw.json');
     fs.writeFileSync(dataFile, raw);
@@ -133,16 +151,16 @@ test('render-file sends the data file exactly as written', async () => {
     }
 });
 
-test('a malformed DOC_RENDER_URL is a clean error', async () => {
+test('a malformed DOC_RENDER_URL is a clean error', { timeout: TEST_TIMEOUT_MS }, async () => {
     const r = await spawned(process.execPath, [CLI, 'render-file', fixture, path.join(tmp, 'raw.json')], { DOC_RENDER_URL: 'not a url' });
     assert.equal(r.status, 1);
     assert.equal(r.stderr, 'the service URL is not a valid URL: not a url\n');
 });
 
-test('render-file goes through HTTP_PROXY from either entry point, however Node was started', async () => {
+test('render-file goes through HTTP_PROXY from either entry point, however Node was started', { timeout: TEST_TIMEOUT_MS }, async () => {
     const seen = [];
-    const { server, port } = await listen((req, res) => {
-        seen.push(req.url);
+    const { port, close } = await listenProxy((req, res) => {
+        seen.push(new URL(req.url, `http://${req.headers.host}`).href);
         answerPdf(res);
     });
     try {
@@ -157,6 +175,36 @@ test('render-file goes through HTTP_PROXY from either entry point, however Node 
             assert.deepEqual(seen, ['http://doc-render.invalid:8123/api/render'], cmd);
         }
     } finally {
+        close();
+    }
+});
+
+test('a signal to the launcher stops the Node it restarted', { timeout: TEST_TIMEOUT_MS, skip: process.platform === 'win32' }, async () => {
+    const sockets = new Set();
+    const { server, port } = await listen(() => {});
+    server.on('connection', (s) => sockets.add(s));
+    try {
+        const child = spawn(process.execPath, [CLI, 'render-file', fixture, path.join(tmp, 'raw.json')], {
+            cwd: tmp,
+            env: { ...process.env, DOC_RENDER_URL: `http://127.0.0.1:${port}` },
+            stdio: 'ignore',
+        });
+        const closed = new Promise((resolve) => child.on('close', (status, signal) => resolve({ status, signal })));
+        while (sockets.size === 0) await new Promise((r) => setTimeout(r, 50));
+        child.kill('SIGTERM');
+        const timer = setTimeout(() => child.kill('SIGKILL'), SPAWN_TIMEOUT_MS);
+        const r = await closed;
+        clearTimeout(timer);
+        assert.equal(r.signal, 'SIGTERM');
+        const gone = await new Promise((resolve) => {
+            const [socket] = sockets;
+            if (socket.destroyed) return resolve(true);
+            socket.on('close', () => resolve(true));
+            setTimeout(() => resolve(false), 5000);
+        });
+        assert.ok(gone, 'the restarted Node closed its connection, so it is not orphaned');
+    } finally {
+        for (const s of sockets) s.destroy();
         server.close();
     }
 });
