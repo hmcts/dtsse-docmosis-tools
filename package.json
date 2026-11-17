@@ -1,6 +1,6 @@
 {
   "name": "@hmcts-cft/docmosis-tools",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Read, check, edit and render Docmosis .docx template files",
   "license": "MIT",
   "type": "module",
