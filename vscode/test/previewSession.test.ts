@@ -1,7 +1,7 @@
-import { chmodSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type * as vscodeTypes from 'vscode';
 import { PreviewProvider } from '../src/previewProvider';
 import { FakePanel, stub, Uri } from './vscodeStub';
@@ -11,27 +11,24 @@ const TREE = [
   { type: 'field', text: "{dateFormat(served,'d MMMM yyyy')}", dataRefs: ['served'], children: [] },
 ];
 
-/** A workspace with a fake docmosis CLI that takes `delay` seconds, and a fake template library. */
+vi.mock('@hmcts-cft/docmosis-tools', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@hmcts-cft/docmosis-tools')>()),
+  readTemplate: (file: string) => file,
+  instructionTree: () => [{ part: 'word/document.xml', children: TREE }],
+}));
+
+/** A workspace with a template, and a doc-render service that takes `delay` seconds to answer. */
 function workspace(delay: number) {
   const root = mkdtempSync(join(tmpdir(), 'tp-session-'));
-  const cliDir = join(root, 'tools');
-  mkdirSync(join(cliDir, 'bin'), { recursive: true });
-  mkdirSync(join(cliDir, 'lib'), { recursive: true });
-  writeFileSync(
-    join(cliDir, 'lib', 'docx.mjs'),
-    `export const readTemplate = (f) => f;\nexport const instructionTree = () => [{ part: 'word/document.xml', children: ${JSON.stringify(TREE)} }];\n`,
-  );
-  const cli = join(cliDir, 'bin', 'docmosis');
-  writeFileSync(
-    cli,
-    `#!/usr/bin/env bash\nsleep ${delay}\nwhile [ $# -gt 0 ]; do [ "$1" = --out ] && out="$2"; shift; done\necho %PDF-fake > "$out"\n`,
-  );
-  chmodSync(cli, 0o755);
   const docx = join(root, 'Templates', 'T.docx');
   mkdirSync(join(root, 'Templates'));
   writeFileSync(docx, 'not read by the fake library');
+  vi.stubGlobal('fetch', async () => {
+    await new Promise((r) => setTimeout(r, delay * 1000));
+    return new Response('%PDF-fake', { headers: { 'content-type': 'application/pdf' } });
+  });
   stub.workspaceRoot = root;
-  stub.settings = { docmosisCli: cli };
+  stub.settings = {};
   stub.errors = [];
   return { root, docx };
 }
@@ -58,6 +55,10 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const types = (panel: FakePanel) => panel.posted.map((m) => m.type);
 
 describe('PreviewSession', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
   beforeEach(() => {
     stub.openDialog = () => Promise.resolve(undefined);
   });

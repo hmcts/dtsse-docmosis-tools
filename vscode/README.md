@@ -7,7 +7,7 @@ A VS Code extension that previews Docmosis `.docx` templates.
 - Renders on the hosted [dtsse-doc-render](https://github.com/hmcts/dtsse-doc-render) service and shows the PDF beside the form. It re-renders 600 ms after you stop typing, and when the `.docx` changes on disk.
 - Reports coverage: values the template uses that the data lacks, and data keys the template never uses.
 
-It calls `docmosis render-file`, which sends the template and data to dtsse-doc-render; the service is reachable only over the VPN, so connect it first (if a render fails with "the VPN is probably down", it is not connected). The service implements a subset of the Docmosis template language (see its `docs/template-language.md`), so a successful preview is not proof that a template works in Docmosis. The `.vsix` bundles the CLI (`bin/docmosis`) and its template library (`lib/docx.mjs`) from this repo, so it works in any workspace; template parsing uses that library, so the extension and the CLI agree on what a template contains.
+It sends the template and data to dtsse-doc-render, which is reachable only over the VPN, so connect it first (a render that fails with "Can't reach dtsse-doc-render: is the VPN connected?" means it is not). Set `DOC_RENDER_URL` in the environment VS Code starts in to use another instance. The service implements a subset of the Docmosis template language (see its `docs/template-language.md`), so a successful preview is not proof that a template works in Docmosis. The extension bundles the `@hmcts-cft/docmosis-tools` library, which the `docmosis` CLI also uses, so it works in any workspace and the two agree on what a template contains.
 
 ## Use
 
@@ -20,14 +20,16 @@ Toolbar:
 | Render | Renders now. |
 | Load data... | Merges a JSON file into the form. |
 | Save data | Writes the form data to the sidecar file. |
-| Dev mode | Passes `--dev` to `docmosis render-file`. |
+| Dev mode | Renders field errors into the document instead of failing (the service's `devMode`). |
 | Open PDF | Saves the PDF beside the data and reveals it in the Explorer. |
 
 Data is saved on every render at `<workspaceFolder>/.hmcts-template-preview/<template path>/default.json`, where `<template path>` is the template's path in the workspace without `.docx` (so `a/X.docx` and `b/X.docx` keep separate data). Data saved by earlier versions under `.hmcts-template-preview/<template name>/default.json` is loaded when the new file doesn't exist yet. The folder contains a `.gitignore` with `*`, so it is never committed. The form holds only the values you supplied; missing values aren't defaulted.
 
-## Build and install
+## Install
 
-Download `hmcts-template-preview.vsix` from the [latest release](https://github.com/hmcts/dtsse-docmosis-tools/releases/latest) and run `code --install-extension hmcts-template-preview.vsix`.
+- **Marketplace:** search for "HMCTS Template Preview" (publisher `hmcts`) in the Extensions view, or run `code --install-extension hmcts.hmcts-template-preview`. Open VSX, for VS Code forks, carries the same id once it is published there. The `hmcts` publisher is unverified, so VS Code asks once to trust it on first install.
+- **GitHub release:** download `hmcts-template-preview.vsix` from the [latest release](https://github.com/hmcts/dtsse-docmosis-tools/releases/latest) and run `code --install-extension hmcts-template-preview.vsix`. Releases are versioned `0.1.<run number>`.
+- **Devcontainer:** the cft-workspace devcontainer runs `.devcontainer/install-template-preview.sh` on attach, which installs the latest release's `.vsix` into the attached VS Code and updates it when a newer release appears.
 
 To build it yourself (Node 20 or later and npm):
 
@@ -36,6 +38,8 @@ cd vscode
 npm ci && npm run package
 code --install-extension hmcts-template-preview.vsix
 ```
+
+Maintainers: [PUBLISHING.md](PUBLISHING.md) lists what the Marketplace and Open VSX publishing needs.
 
 ## Develop
 
@@ -48,18 +52,12 @@ Open this folder in VS Code and press F5 to start an Extension Development Host,
 
 | Script | |
 |---|---|
-| `npm run build` | Type-check, then bundle `dist/extension.js` (node) and `dist/webview.js` (browser) with esbuild, and copy the pdf.js worker and the CLI (`../bin/docmosis`, `../lib/docx.mjs`) into `cli/`. |
-| `npm test` | Unit tests (vitest). The library test uses `../lib/docx.mjs` unless `DOCMOSIS_LIB` names another. |
-| `npm run test:integration` | Opens the editor in a real VS Code under `xvfb-run` with a fake CLI and `../lib/docx.mjs` (`@vscode/test-electron`; downloads VS Code on first run). |
+| `npm run build` | Type-check, then bundle `dist/extension.js` (node) and `dist/webview.js` (browser) with esbuild, and copy the pdf.js worker. |
+| `npm test` | Unit tests (vitest). `RENDER_LIVE_TEMPLATE=<file.docx> npm test` also renders that template on the real dtsse-doc-render (VPN). |
+| `npm run test:integration` | Opens the editor in a real VS Code under `xvfb-run` with a local stand-in for dtsse-doc-render (`@vscode/test-electron`; downloads VS Code on first run). |
 | `npm run package` | Build, then write `hmcts-template-preview.vsix`. |
 
-Source layout: `src/schema.ts` infers the schema from an instruction tree (pure); `src/templateTree.ts` is the only code that reads a `.docx`; `src/render.ts` runs the CLI and drops stale results; `src/webview/` is the form and PDF pane; `src/messages.ts` types the host and webview messages.
-
-## Settings
-
-| Setting | Default | |
-|---|---|---|
-| `hmctsTemplatePreview.docmosisCli` | empty | Path to the `docmosis` CLI; empty uses the CLI bundled with the extension. `${workspaceFolder}` is replaced by the workspace folder. The template library is loaded from `../lib/docx.mjs` relative to the script, as in a checkout of this repo. |
+Source layout: `src/schema.ts` infers the schema from an instruction tree (pure); `src/templateTree.ts` is the only code that reads a `.docx`; `src/render.ts` calls `renderFile` and drops stale results; `src/webview/` is the form and PDF pane; `src/messages.ts` types the host and webview messages.
 
 ## Limits
 

@@ -1,15 +1,14 @@
-import * as fs from 'node:fs';
 import * as fsp from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { isObject, type JsonObject } from './data';
 import type { HostToWebview, TemplateInfo, WebviewToHost } from './messages';
-import { bundledCli, LatestRenderer, renderPdf, resolveCli } from './render';
+import { LatestRenderer, RenderError, renderPdf } from './render';
 import { fieldsForFailure, indexInstructions, parseRenderFailures, type InstructionRefs } from './failure';
 import { inferSchema, type ObjectSchema } from './schema';
 import { ensureSidecarFolder, readTemplateSidecar, sidecarPath, writeSidecar } from './sidecar';
-import { CachedTemplateReader, libraryPathFor } from './templateTree';
+import { CachedTemplateReader } from './templateTree';
 import type { InstructionNode } from './tree';
 import { renderBlockers } from './validate';
 
@@ -81,7 +80,7 @@ class PreviewSession {
       onError: (seq, error, request) => {
         this.output.appendLine(`Render ${seq} failed: ${error.message}`);
         this.output.show(true);
-        const failures = parseRenderFailures(error.message);
+        const failures = parseRenderFailures(error instanceof RenderError ? error.lines.join('\n') : error.message);
         this.post({
           type: 'renderError',
           seq,
@@ -115,19 +114,10 @@ class PreviewSession {
     void this.panel.webview.postMessage(message);
   }
 
-  private cli(): string {
-    const setting = vscode.workspace.getConfiguration('hmctsTemplatePreview').get<string>('docmosisCli', '').trim();
-    if (!setting) return bundledCli(this.context.extensionPath);
-    const cli = resolveCli(setting, this.root);
-    if (fs.existsSync(cli)) return cli;
-    const first = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-    const alternative = first ? resolveCli(setting, first) : undefined;
-    return alternative && fs.existsSync(alternative) ? alternative : cli;
-  }
 
   /** Reads the template, or returns undefined when it hasn't changed since the last read. */
   private async loadTemplate(force: boolean): Promise<TemplateInfo | undefined> {
-    const tree = await this.reader.read(libraryPathFor(this.cli()));
+    const tree = await this.reader.read();
     if (!force && tree === this.tree) return undefined;
     this.tree = tree;
     const { root, warnings } = inferSchema(tree);
@@ -267,16 +257,13 @@ class PreviewSession {
     const storage = this.context.storageUri ?? this.context.globalStorageUri;
     const outDir = path.join(storage?.fsPath ?? path.join(os.tmpdir(), 'hmcts-template-preview'), 'render');
     const result = await renderPdf({
-      cli: this.cli(),
       docx: this.docx,
       data: request.data,
       dev: request.dev,
       outDir,
-      cwd: this.root,
-      log: (text) => this.output.append(text),
       signal,
     });
-    return { id: request.id, bytes: new Uint8Array(await fsp.readFile(result.pdfPath)), pdfPath: result.pdfPath };
+    return { id: request.id, bytes: result.bytes, pdfPath: result.pdfPath };
   }
 
   private html(webview: vscode.Webview, dist: vscode.Uri): string {

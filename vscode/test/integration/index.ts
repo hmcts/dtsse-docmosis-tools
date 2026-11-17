@@ -1,6 +1,6 @@
 import * as assert from 'node:assert/strict';
-import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { createServer } from 'node:http';
 import { join } from 'node:path';
 import { strToU8, zipSync } from 'fflate';
 import * as vscode from 'vscode';
@@ -22,7 +22,6 @@ async function until(condition: () => boolean, what: string, timeoutMs = 30000):
 }
 
 export async function run(): Promise<void> {
-  const library = process.env.DOCMOSIS_LIB;
   const workspace = process.env.TEST_WORKSPACE!;
   assert.ok(workspace, 'TEST_WORKSPACE is set by the runner');
 
@@ -42,36 +41,27 @@ export async function run(): Promise<void> {
     }),
   );
 
-  const cliDir = mkdtempSync(join(tmpdir(), 'tp-cli-'));
-  mkdirSync(join(cliDir, 'bin'));
-  const cli = join(cliDir, 'bin', 'docmosis');
-  writeFileSync(
-    cli,
-    `#!/usr/bin/env bash\necho "$@" > "${cliDir}/args"\nwhile [ $# -gt 0 ]; do [ "$1" = --out ] && out="$2"; shift; done\ncat > "$out" <<'PDF'\n${MINIMAL_PDF}PDF\n`,
-  );
-  chmodSync(cli, 0o755);
-  if (library && existsSync(library)) {
-    mkdirSync(join(cliDir, 'lib'));
-    copyFileSync(library, join(cliDir, 'lib', 'docx.mjs'));
-  }
-  await vscode.workspace.getConfiguration('hmctsTemplatePreview').update('docmosisCli', cli, vscode.ConfigurationTarget.Global);
+  // The extension host is this process, so the in-process render client reads this URL.
+  let requests = 0;
+  const service = createServer((request, response) => {
+    request.resume();
+    request.on('end', () => {
+      requests++;
+      response.writeHead(200, { 'content-type': 'application/pdf' }).end(MINIMAL_PDF);
+    });
+  });
+  await new Promise<void>((resolve) => service.listen(0, '127.0.0.1', resolve));
+  process.env.DOC_RENDER_URL = `http://127.0.0.1:${(service.address() as { port: number }).port}`;
 
   await vscode.commands.executeCommand('hmctsTemplatePreview.preview', vscode.Uri.file(docx));
   const input = vscode.window.tabGroups.activeTabGroup.activeTab?.input;
   assert.ok(input instanceof vscode.TabInputCustom, 'the preview opens as a custom editor');
   assert.equal(input.viewType, 'hmctsTemplatePreview.docxPreview');
 
-  if (!library || !existsSync(library)) {
-    console.log('DOCMOSIS_LIB not set: skipped the webview round trip');
-    return;
-  }
-
   // The webview announces itself, receives the schema, then asks the host to render.
   const sidecar = join(workspace, '.hmcts-template-preview', 'Synthetic', 'default.json');
-  await until(() => existsSync(join(cliDir, 'args')) && existsSync(sidecar), 'the webview to request a render');
-  const args = readFileSync(join(cliDir, 'args'), 'utf8').trim().split(' ');
-  assert.equal(args[0], 'render-file');
-  assert.ok(args[1]!.endsWith('Synthetic.docx'));
+  await until(() => requests > 0 && existsSync(sidecar), 'the webview to request a render');
+  service.close();
   assert.equal(readFileSync(join(workspace, '.hmcts-template-preview', '.gitignore'), 'utf8'), '*\n');
   console.log('integration: webview round trip passed');
 }

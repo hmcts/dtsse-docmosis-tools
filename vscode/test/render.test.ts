@@ -1,104 +1,114 @@
-import { chmod, mkdir, mkdtemp, readFile, stat, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
-import { bundledCli, LatestRenderer, RenderAbortedError, renderPdf, renderStem, resolveCli, RenderError } from '../src/render';
+import { LatestRenderer, RenderAbortedError, RenderError, renderPdf, renderStem } from '../src/render';
 
-describe('resolveCli', () => {
-  it('substitutes the workspace folder', () => {
-    expect(resolveCli('${workspaceFolder}/bin/docmosis', '/ws')).toBe('/ws/bin/docmosis');
-  });
-});
+const PDF = Buffer.from('%PDF-fake');
 
-describe('bundledCli', () => {
-  it('restores the executable bit on the packaged CLI', async () => {
-    const ext = await mkdtemp(join(tmpdir(), 'tp-ext-'));
-    await mkdir(join(ext, 'cli', 'bin'), { recursive: true });
-    const cli = join(ext, 'cli', 'bin', 'docmosis');
-    await writeFile(cli, '#!/usr/bin/env bash\n', { mode: 0o644 });
-    expect(bundledCli(ext)).toBe(cli);
-    expect((await stat(cli)).mode & 0o111).toBe(0o111);
-  });
-});
+/** A fetch that records the request and answers with a PDF, or whatever the handler returns. */
+function fakeFetch(handler: (form: FormData) => Response | Promise<Response> = () => new Response(PDF, { headers: { 'content-type': 'application/pdf' } })) {
+  const calls: { url: string; form: FormData; signal: AbortSignal | undefined }[] = [];
+  const fetchImpl = (async (url: string, init: RequestInit) => {
+    const form = init.body as FormData;
+    calls.push({ url, form, signal: init.signal ?? undefined });
+    return handler(form);
+  }) as unknown as typeof fetch;
+  return { fetchImpl, calls };
+}
 
-async function fakeCli(script: string): Promise<{ cli: string; dir: string }> {
+async function template(): Promise<{ dir: string; docx: string }> {
   const dir = await mkdtemp(join(tmpdir(), 'tp-render-'));
-  const cli = join(dir, 'docmosis');
-  await writeFile(cli, `#!/usr/bin/env bash\n${script}\n`);
-  await chmod(cli, 0o755);
-  return { cli, dir };
+  const docx = join(dir, 'T.docx');
+  await writeFile(docx, 'PK-not-read');
+  return { dir, docx };
 }
 
 describe('renderPdf', () => {
-  it('writes the data, runs `render-file` with --out and returns the PDF path', async () => {
-    const { cli, dir } = await fakeCli(
-      'echo "$@" > "$(dirname "$0")/args"; while [ $# -gt 0 ]; do [ "$1" = --out ] && out="$2"; shift; done; echo %PDF-fake > "$out"',
-    );
-    const result = await renderPdf({ cli, docx: join(dir, 'T.docx'), data: { a: 1 }, dev: false, outDir: join(dir, 'out'), cwd: dir });
-    expect(await readFile(result.pdfPath, 'utf8')).toContain('%PDF');
-    expect(JSON.parse(await readFile(result.dataPath, 'utf8'))).toEqual({ a: 1 });
-    const args = (await readFile(join(dir, 'args'), 'utf8')).trim().split(' ');
-    expect(args.slice(0, 2)).toEqual(['render-file', expect.stringMatching(/T\.docx$/)]);
-    expect(args).not.toContain('--dev');
+  it('posts the template and data to the service and writes the PDF', async () => {
+    const { dir, docx } = await template();
+    const { fetchImpl, calls } = fakeFetch();
+    const result = await renderPdf({ docx, data: { a: 1 }, dev: false, outDir: join(dir, 'out'), fetchImpl });
+    expect(await readFile(result.pdfPath, 'utf8')).toBe('%PDF-fake');
+    expect(Buffer.from(result.bytes).toString()).toBe('%PDF-fake');
+    expect(calls[0]!.url).toMatch(/\/api\/render$/);
+    expect(JSON.parse(await (calls[0]!.form.get('data') as Blob).text())).toEqual({ a: 1 });
+    expect(calls[0]!.form.get('outputFormat')).toBe('pdf');
+    expect(calls[0]!.form.get('devMode')).toBe('false');
   });
 
-  it('adds --dev when asked', async () => {
-    const { cli, dir } = await fakeCli(
-      'echo "$@" > "$(dirname "$0")/args"; while [ $# -gt 0 ]; do [ "$1" = --out ] && out="$2"; shift; done; : > "$out"',
-    );
-    await renderPdf({ cli, docx: join(dir, 'T.docx'), data: {}, dev: true, outDir: join(dir, 'out'), cwd: dir });
-    expect((await readFile(join(dir, 'args'), 'utf8')).trim().split(' ')).toContain('--dev');
+  it('sets devMode when asked', async () => {
+    const { dir, docx } = await template();
+    const { fetchImpl, calls } = fakeFetch();
+    await renderPdf({ docx, data: {}, dev: true, outDir: join(dir, 'out'), fetchImpl });
+    expect(calls[0]!.form.get('devMode')).toBe('true');
   });
 
-  it('runs the CLI with the inherited environment unchanged', async () => {
-    const { cli, dir } = await fakeCli(
-      'echo "$DOC_RENDER_URL" > "$(dirname "$0")/url"; while [ $# -gt 0 ]; do [ "$1" = --out ] && out="$2"; shift; done; : > "$out"',
-    );
+  it('sends to DOC_RENDER_URL when it is set', async () => {
+    const { dir, docx } = await template();
+    const { fetchImpl, calls } = fakeFetch();
     vi.stubEnv('DOC_RENDER_URL', 'https://doc-render.example');
     try {
-      await renderPdf({ cli, docx: join(dir, 'T.docx'), data: {}, dev: false, outDir: join(dir, 'out'), cwd: dir });
+      await renderPdf({ docx, data: {}, dev: false, outDir: join(dir, 'out'), fetchImpl });
     } finally {
       vi.unstubAllEnvs();
     }
-    expect((await readFile(join(dir, 'url'), 'utf8')).trim()).toBe('https://doc-render.example');
+    expect(calls[0]!.url).toBe('https://doc-render.example/api/render');
   });
 
-  it('rejects with the CLI stderr on failure', async () => {
-    const { cli, dir } = await fakeCli('echo "render failed (HTTP 500)" >&2; exit 1');
-    await expect(
-      renderPdf({ cli, docx: join(dir, 'T.docx'), data: {}, dev: false, outDir: join(dir, 'out'), cwd: dir }),
-    ).rejects.toThrow('render failed (HTTP 500)');
+  it("rejects with the service's error lines when the render fails", async () => {
+    const { dir, docx } = await template();
+    const body = JSON.stringify({ shortMsg: 'Bad template', longMsg: "Unknown field: <<x>> (word/document.xml, paragraph 2)" });
+    const { fetchImpl } = fakeFetch(() => new Response(body, { status: 400, headers: { 'content-type': 'application/json' } }));
+    const error = await renderPdf({ docx, data: {}, dev: false, outDir: join(dir, 'out'), fetchImpl }).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(RenderError);
+    expect((error as RenderError).message).toContain('Render failed (HTTP 400)');
+    expect((error as RenderError).lines).toContain('Unknown field: <<x>> (word/document.xml, paragraph 2)');
+  });
+
+  it('asks whether the VPN is connected when the service cannot be reached', async () => {
+    const { dir, docx } = await template();
+    const fetchImpl = (async () => {
+      throw new TypeError('fetch failed');
+    }) as unknown as typeof fetch;
+    await expect(renderPdf({ docx, data: {}, dev: false, outDir: join(dir, 'out'), fetchImpl })).rejects.toThrow(
+      "Can't reach dtsse-doc-render: is the VPN connected?",
+    );
   });
 
   it('keeps the files of templates with the same name in different folders apart', async () => {
-    const { cli, dir } = await fakeCli(
-      'while [ $# -gt 0 ]; do [ "$1" = --out ] && out="$2"; shift; done; echo "%PDF-$(basename "$(dirname "$out")")" > "$out"',
-    );
+    const { dir } = await template();
     await mkdir(join(dir, 'A'));
     await mkdir(join(dir, 'B'));
+    await writeFile(join(dir, 'A', 'X.docx'), 'a');
+    await writeFile(join(dir, 'B', 'X.docx'), 'b');
+    const { fetchImpl } = fakeFetch();
     const outDir = join(dir, 'out');
-    const base = await renderPdf({ cli, docx: join(dir, 'A', 'X.docx'), data: { v: 'base' }, dev: false, outDir, cwd: dir });
-    const b = await renderPdf({ cli, docx: join(dir, 'B', 'X.docx'), data: { v: 'b' }, dev: false, outDir, cwd: dir });
-    expect(base.pdfPath).not.toBe(b.pdfPath);
-    expect(base.dataPath).not.toBe(b.dataPath);
-    expect(JSON.parse(await readFile(base.dataPath, 'utf8'))).toEqual({ v: 'base' });
-    expect(JSON.parse(await readFile(b.dataPath, 'utf8'))).toEqual({ v: 'b' });
+    const a = await renderPdf({ docx: join(dir, 'A', 'X.docx'), data: {}, dev: false, outDir, fetchImpl });
+    const b = await renderPdf({ docx: join(dir, 'B', 'X.docx'), data: {}, dev: false, outDir, fetchImpl });
+    expect(a.pdfPath).not.toBe(b.pdfPath);
     expect(renderStem(join(dir, 'A', 'X.docx'))).toMatch(/^X-[0-9a-f]{8}$/);
   });
 
-  it('kills the CLI and rejects with RenderAbortedError when aborted', async () => {
-    const { cli, dir } = await fakeCli('exec sleep 30');
+  it('cancels the request and rejects with RenderAbortedError when aborted', async () => {
+    const { dir, docx } = await template();
+    const fetchImpl = ((_url: string, init: RequestInit) =>
+      new Promise((_resolve, reject) => {
+        init.signal?.addEventListener('abort', () => reject(Object.assign(new Error('aborted'), { name: 'AbortError' })));
+      })) as unknown as typeof fetch;
     const controller = new AbortController();
-    const render = renderPdf({ cli, docx: join(dir, 'T.docx'), data: {}, dev: false, outDir: join(dir, 'out'), cwd: dir, signal: controller.signal });
+    const render = renderPdf({ docx, data: {}, dev: false, outDir: join(dir, 'out'), signal: controller.signal, fetchImpl });
     setTimeout(() => controller.abort(), 50);
     await expect(render).rejects.toThrow(RenderAbortedError);
   });
 
-  it('says so when the CLI is missing', async () => {
-    const dir = await mkdtemp(join(tmpdir(), 'tp-render-'));
-    await expect(
-      renderPdf({ cli: join(dir, 'nope'), docx: 'T.docx', data: {}, dev: false, outDir: dir, cwd: dir }),
-    ).rejects.toThrow(RenderError);
+  it('rejects at once when already aborted', async () => {
+    const { dir, docx } = await template();
+    const controller = new AbortController();
+    controller.abort();
+    await expect(renderPdf({ docx, data: {}, dev: false, outDir: join(dir, 'out'), signal: controller.signal })).rejects.toThrow(
+      RenderAbortedError,
+    );
   });
 });
 
