@@ -1,0 +1,34 @@
+// Fails unless dist/cli/docmosis is stored in the vsix with mode 0755, which the extension's
+// stub relies on to exec it. Reads the zip's central directory: the Unix mode is the high
+// half of each entry's external attributes.
+import { readFileSync } from 'node:fs';
+
+const file = process.argv[2];
+if (!file) {
+  console.error('usage: check-vsix.mjs <file.vsix>');
+  process.exit(2);
+}
+const zip = readFileSync(file);
+let eocd = zip.length - 22;
+while (eocd >= 0 && zip.readUInt32LE(eocd) !== 0x06054b50) eocd--;
+if (eocd < 0) throw new Error(`${file} is not a zip`);
+
+const entries = zip.readUInt16LE(eocd + 10);
+let offset = zip.readUInt32LE(eocd + 16);
+const modes = new Map();
+for (let i = 0; i < entries; i++) {
+  const nameLength = zip.readUInt16LE(offset + 28);
+  const extraLength = zip.readUInt16LE(offset + 30);
+  const commentLength = zip.readUInt16LE(offset + 32);
+  const name = zip.toString('utf8', offset + 46, offset + 46 + nameLength);
+  modes.set(name, (zip.readUInt32LE(offset + 38) >>> 16) & 0o777);
+  offset += 46 + nameLength + extraLength + commentLength;
+}
+
+const entry = 'extension/dist/cli/docmosis';
+const mode = modes.get(entry);
+if (mode !== 0o755) {
+  console.error(`${file}: ${entry} has mode ${mode === undefined ? 'missing' : mode.toString(8)}, expected 755`);
+  process.exit(1);
+}
+console.log(`${file}: ${entry} is 755`);

@@ -31,18 +31,26 @@ export async function run(): Promise<void> {
   assert.ok((await vscode.commands.getCommands(true)).includes('hmctsTemplatePreview.preview'));
 
   if (process.platform !== 'win32') {
-    // A terminal opened after activation sees the docmosis command, found through the extension's PATH entry.
+    // A terminal opened after activation finds the stub in the extension's stable storage directory,
+    // and the stub reaches the bundled launcher on both the system Node and VS Code's own.
     const found = join(workspace, 'terminal-which.txt');
-    const terminal = vscode.window.createTerminal({
-      name: 'docmosis-check',
-      shellPath: '/bin/sh',
-      shellArgs: ['-c', `command -v docmosis > '${found}'; docmosis --help 2>> '${found}'; echo "$DOCMOSIS_VSCODE_NODE" >> '${found}'`],
-    });
-    await until(() => existsSync(found) && readFileSync(found, 'utf8').includes('usage: docmosis'), 'the terminal to run docmosis');
+    const script = [
+      `echo "WHICH=$(command -v docmosis)" > '${found}'`,
+      `docmosis --help 2>&1 | head -n 1 | sed 's/^/SYSTEM=/' >> '${found}'`,
+      `DOCMOSIS_FORCE_VSCODE_NODE=1 docmosis --help 2>&1 | head -n 1 | sed 's/^/EDITOR=/' >> '${found}'`,
+      `echo DONE >> '${found}'`,
+    ].join('; ');
+    const terminal = vscode.window.createTerminal({ name: 'docmosis-check', shellPath: '/bin/sh', shellArgs: ['-c', script] });
+    await until(() => existsSync(found) && readFileSync(found, 'utf8').includes('DONE'), 'the terminal to run docmosis');
     terminal.dispose();
     const lines = readFileSync(found, 'utf8').split('\n');
-    assert.ok(lines[0]?.endsWith(join('dist', 'cli', 'docmosis')), `docmosis resolves into dist/cli: ${lines[0]}`);
-    assert.ok(lines.some((line) => line.length > 0 && !line.includes(' ') && line.startsWith('/')), 'DOCMOSIS_VSCODE_NODE is set');
+    const marker = (name: string) => lines.find((line) => line.startsWith(`${name}=`))?.slice(name.length + 1);
+    assert.ok(
+      marker('WHICH')?.endsWith(join('globalStorage', 'hmcts.hmcts-template-preview', 'bin', 'docmosis')),
+      `docmosis resolves to the stub in global storage: ${marker('WHICH')}`,
+    );
+    assert.match(marker('SYSTEM') ?? '', /^usage: docmosis <command>/, 'the system Node runs the launcher');
+    assert.match(marker('EDITOR') ?? '', /^usage: docmosis <command>/, "VS Code's Node runs the launcher");
     console.log('integration: terminal command passed');
   }
 

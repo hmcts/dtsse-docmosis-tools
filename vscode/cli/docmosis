@@ -1,7 +1,8 @@
 #!/bin/sh
 # The docmosis command shipped inside the HMCTS Template Preview extension.
 # Runs the bundled CLI with the user's Node when it is 24 or newer, otherwise with the Node
-# inside VS Code, which the extension names in DOCMOSIS_VSCODE_NODE.
+# inside VS Code. The extension's stub names that Node in DOCMOSIS_VSCODE_NODE, and says in
+# DOCMOSIS_VSCODE_NODE_FLAGS and DOCMOSIS_VSCODE_NODE_PROXY what it supports.
 # exec keeps the exit code and signals.
 dir=$(dirname "$0")
 cli="$dir/docmosis-cli.mjs"
@@ -12,12 +13,13 @@ if [ -z "$DOCMOSIS_FORCE_VSCODE_NODE" ] && command -v node >/dev/null 2>&1 &&
 fi
 
 if [ -n "$DOCMOSIS_VSCODE_NODE" ] && [ -x "$DOCMOSIS_VSCODE_NODE" ]; then
-    # An older VS Code ships a Node that rejects --use-system-ca, so only pass it when supported.
-    flag=
-    if [ "$(ELECTRON_RUN_AS_NODE=1 "$DOCMOSIS_VSCODE_NODE" -p "process.allowedNodeEnvironmentFlags.has('--use-system-ca') ? 1 : 0" 2>/dev/null)" = 1 ]; then
-        flag=--use-system-ca
+    if [ "$DOCMOSIS_VSCODE_NODE_PROXY" != 1 ] &&
+        [ -n "$HTTPS_PROXY$https_proxy$HTTP_PROXY$http_proxy" ]; then
+        echo "docmosis: the Node in VS Code ignores HTTPS_PROXY and HTTP_PROXY; install Node 24 or newer on PATH to use the proxy" >&2
     fi
-    ELECTRON_RUN_AS_NODE=1 NODE_USE_ENV_PROXY=1 exec "$DOCMOSIS_VSCODE_NODE" $flag "$cli" "$@"
+    # Left unquoted so an empty value passes no argument.
+    # shellcheck disable=SC2086
+    ELECTRON_RUN_AS_NODE=1 NODE_USE_ENV_PROXY=1 exec "$DOCMOSIS_VSCODE_NODE" $DOCMOSIS_VSCODE_NODE_FLAGS "$cli" "$@"
 fi
 
 echo "docmosis: needs Node 24 or newer on PATH, or a terminal opened in VS Code after the HMCTS Template Preview extension activated" >&2

@@ -91,9 +91,9 @@
     "typecheck": "tsc --noEmit",
     "build": "npm run typecheck && node esbuild.mjs",
     "watch": "node esbuild.mjs --watch",
-    "test": "node esbuild.mjs && vitest run",
+    "test": "vitest run",
     "test:integration": "npm run build && xvfb-run -a node test/integration/runTest.mjs",
-    "package": "npm run build && vsce package --no-dependencies --out hmcts-template-preview.vsix",
+    "package": "npm run build && vsce package --no-dependencies --out hmcts-template-preview.vsix && node scripts/check-vsix.mjs hmcts-template-preview.vsix",
     "vscode:prepublish": "npm run build"
   },
   "devDependencies": {

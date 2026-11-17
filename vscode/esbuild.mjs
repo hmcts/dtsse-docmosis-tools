@@ -1,5 +1,6 @@
-import { chmod, copyFile, mkdir } from 'node:fs/promises';
+import { copyFile, mkdir } from 'node:fs/promises';
 import * as esbuild from 'esbuild';
+import { cliConfig } from './esbuild.cli.mjs';
 
 const watch = process.argv.includes('--watch');
 
@@ -16,16 +17,7 @@ const configs = [
     // The library's run-as-a-script guard reads import.meta.url and copes with it being absent.
     logOverride: { 'empty-import-meta': 'silent' },
   },
-  {
-    ...common,
-    entryPoints: ['../lib/cli.mjs'],
-    outfile: 'dist/cli/docmosis-cli.mjs',
-    platform: 'node',
-    format: 'esm',
-    target: 'es2022',
-    // lib/docx.mjs runs its own main when it is the script; in the bundle that is never so.
-    define: { 'import.meta.url': '"file:///bundled"' },
-  },
+  cliConfig('dist/cli/docmosis-cli.mjs'),
   {
     ...common,
     entryPoints: ['src/webview/main.ts'],
@@ -50,7 +42,6 @@ await copyFile('node_modules/pdfjs-dist/build/pdf.worker.min.mjs', 'dist/pdf.wor
 await copyFile('media/webview.css', 'dist/webview.css');
 await mkdir('dist/cli', { recursive: true });
 await copyFile('cli/docmosis', 'dist/cli/docmosis');
-await chmod('dist/cli/docmosis', 0o755);
 await copyFile('cli/docmosis.cmd', 'dist/cli/docmosis.cmd');
 
 if (watch) {
