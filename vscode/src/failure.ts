@@ -1,4 +1,4 @@
-import { normaliseQuotes, schemaPaths, type ObjectSchema } from './schema';
+import { normaliseQuotes, resolveScopedPath, schemaPaths, type ObjectSchema } from './schema';
 import type { InstructionNode } from './tree';
 
 export interface RenderFailure {
@@ -34,16 +34,16 @@ export interface InstructionRefs {
 export function indexInstructions(tree: InstructionNode[], schema: ObjectSchema): InstructionRefs[] {
   const known = new Set(schemaPaths(schema).map((p) => p.path));
   const out: InstructionRefs[] = [];
-  const walk = (nodes: InstructionNode[], scope: string): void => {
+  const walk = (nodes: InstructionNode[], scopes: string[]): void => {
     for (const node of nodes) {
       if (node.type === 'comment') continue;
-      const paths = node.dataRefs.map((ref) => (scope ? `${scope}.${ref}` : ref)).filter((p) => known.has(p));
+      const paths = node.dataRefs.map((ref) => resolveScopedPath(scopes, ref)).filter((p) => known.has(p));
       if (paths.length > 0) out.push({ text: node.text, paths });
-      const named = node.type === 'repeat' ? /^(?:rs|rr)_([A-Za-z_][\w.]*)$/.exec(node.text) : null;
-      walk(node.children, named ? `${scope ? `${scope}.` : ''}${named[1]}[]` : scope);
+      const named = node.type === 'repeat' ? /^(?:rs|rr)_(\$(?:root|parent|this)\.)?([A-Za-z_][\w.]*)$/.exec(node.text) : null;
+      walk(node.children, named ? [...scopes, `${resolveScopedPath(scopes, `${named[1] ?? ''}${named[2]}`)}[]`] : scopes);
     }
   };
-  walk(tree, '');
+  walk(tree, ['']);
   return out;
 }
 

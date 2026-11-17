@@ -8,7 +8,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
-import { pack } from '../lib/docx.mjs';
+import { dataRefs, pack, readTemplate, templateSchema } from '../lib/docx.mjs';
 import { inferSchema, normaliseQuotes, schemaPaths, summarise } from '../lib/schema.mjs';
 
 const field = (text, dataRefs = [text]) => ({ type: 'field', text, dataRefs, children: [] });
@@ -132,4 +132,91 @@ test('docmosis schema rejects a missing file', () => {
     const r = spawnSync(process.execPath, [CLI, 'schema', '/nonexistent.docx'], { encoding: 'utf8' });
     assert.notEqual(r.status, 0);
     assert.equal(r.stderr, 'schema needs a .docx file or an unpacked folder\n');
+});
+
+test('a repeat over a name that was only blank-tested replaces it without a warning', () => {
+    const { root, warnings } = inferSchema([cond('cs_{!isBlank(items)}', ['items'], [rep('items', [field('label')])])]);
+    assert.equal(root.properties.items.kind, 'array');
+    assert.deepEqual(root.properties.items.notes, []);
+    assert.deepEqual(warnings, []);
+});
+
+const BLANK = 'The template only tests whether this is blank or null.';
+const blankTest = (name) => cond(`cs_{!isBlank(${name})}`, [name]);
+
+test('the blank note stays only while blank tests are the sole use', () => {
+    assert.deepEqual(inferSchema([blankTest('a')]).root.properties.a.notes, [BLANK]);
+    assert.deepEqual(inferSchema([blankTest('a'), blankTest('a')]).root.properties.a.notes, [BLANK]);
+});
+
+test('a stronger use drops the blank note, whichever comes first', () => {
+    const dateUse = field("{dateFormat(d,'d MMMM yyyy')}", ['d']);
+    const afterDate = inferSchema([blankTest('d'), dateUse]).root.properties.d;
+    assert.equal(afterDate.kind, 'date');
+    assert.deepEqual(afterDate.notes, []);
+    assert.deepEqual(inferSchema([field('f'), blankTest('f')]).root.properties.f.notes, []);
+    assert.deepEqual(inferSchema([blankTest('f'), field('f')]).root.properties.f.notes, []);
+    const nested = inferSchema([blankTest('p'), field('p.name')]);
+    assert.equal(nested.root.properties.p.kind, 'object');
+    assert.deepEqual(nested.root.properties.p.notes, []);
+    assert.deepEqual(nested.warnings, []);
+    const repeated = inferSchema([blankTest('items'), rep('items', [field('x')])]);
+    assert.deepEqual(repeated.root.properties.items.notes, []);
+    const reversed = inferSchema([rep('items', [field('x')]), blankTest('items')]);
+    assert.deepEqual(reversed.root.properties.items.notes, []);
+});
+
+test('templateSchema infers from a template and matches the CLI output', () => {
+    withDocx(['<<cs_isEngland>>', '<<name>>', '<<es_>>'], (file) => {
+        const result = templateSchema(readTemplate(file));
+        assert.equal(result.root.properties.isEngland.kind, 'boolean');
+        assert.equal(result.root.properties.name.kind, 'string');
+        assert.deepEqual(result, JSON.parse(execFileSync(process.execPath, [CLI, 'schema', file], { encoding: 'utf8' })));
+    });
+});
+
+test('scope prefixes in dataRefs keep their prefix', () => {
+    assert.deepEqual(dataRefs('$root.caseRef'), ['$root.caseRef']);
+    assert.deepEqual(dataRefs("{dateFormat($parent.court.issued,'yyyy','yyyy-MM-dd')}"), ['$parent.court.issued']);
+    assert.deepEqual(dataRefs('{$this.role + name}'), ['$this.role', 'name']);
+    assert.deepEqual(dataRefs('rs_$parent.items'), ['$parent.items']);
+    assert.deepEqual(dataRefs('$total = a'), ['a']);
+});
+
+test('$root, $parent and $this resolve against the scope stack', () => {
+    const { root, warnings } = inferSchema([
+        rep('parties', [field('name'), field('$root.caseRef', ['$root.caseRef']), field('$parent.court.name', ['$parent.court.name']), field('$this.role', ['$this.role'])]),
+    ]);
+    assert.deepEqual(Object.keys(root.properties).sort(), ['caseRef', 'court', 'parties']);
+    assert.equal(root.properties.court.properties.name.kind, 'string');
+    assert.deepEqual(Object.keys(root.properties.parties.item.properties).sort(), ['name', 'role']);
+    assert.deepEqual(warnings, []);
+});
+
+test('$parent in a nested repeat is the next repeat out, and repeat targets take prefixes', () => {
+    const { root, warnings } = inferSchema([
+        rep('cases', [
+            field('ref'),
+            rep('parties', [field('$parent.ref', ['$parent.ref']), field('$parent.note', ['$parent.note']), field('$root.top', ['$root.top'])]),
+            { type: 'repeat', text: 'rs_$root.extras', dataRefs: ['$root.extras'], children: [field('x')] },
+        ]),
+    ]);
+    const cases = root.properties.cases.item.properties;
+    assert.deepEqual(Object.keys(cases).sort(), ['note', 'parties', 'ref']);
+    assert.deepEqual(Object.keys(cases.parties.item.properties), []);
+    assert.equal(root.properties.top.kind, 'string');
+    assert.equal(root.properties.extras.kind, 'array');
+    assert.equal(root.properties.extras.item.properties.x.kind, 'string');
+    assert.deepEqual(warnings, []);
+});
+
+test('scope prefixes work end to end from a .docx', () => {
+    withDocx(
+        ['<<rs_parties>>', '<<name>> <<$root.caseRef>> <<$parent.court.name>> <<$this.role>>', '<<es_>>'],
+        (file) => {
+            const { properties } = templateSchema(readTemplate(file)).root;
+            assert.deepEqual(Object.keys(properties).sort(), ['caseRef', 'court', 'parties']);
+            assert.deepEqual(Object.keys(properties.parties.item.properties).sort(), ['name', 'role']);
+        },
+    );
 });

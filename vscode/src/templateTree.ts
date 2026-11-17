@@ -1,10 +1,16 @@
 import * as fs from 'node:fs/promises';
-import { instructionTree, readTemplate } from '@hmcts-cft/docmosis-tools';
+import { instructionTree, readTemplate, templateSchema } from '@hmcts-cft/docmosis-tools';
+import type { InferResult } from './schema';
 import type { InstructionNode } from './tree';
 
 /** The only module that reads a .docx, through the docmosis template library, so the extension and the CLI agree on what a template contains. */
 export async function readInstructionTree(docx: string): Promise<InstructionNode[]> {
   return instructionTree(readTemplate(docx)).flatMap((part) => part.children);
+}
+
+/** The data the template at `docx` expects, inferred the same way as `docmosis schema`. */
+export function readTemplateSchema(docx: string): InferResult {
+  return templateSchema(readTemplate(docx));
 }
 
 /**

@@ -1,3 +1,5 @@
+import type { InferResult } from './schema.js';
+
 export class DocxError extends Error {
     constructor(message: string, options?: { exitCode?: number; details?: string[] });
     exitCode: number;
@@ -49,6 +51,7 @@ export interface DiffResult {
 export interface TreeNode {
     type: 'field' | 'condition' | 'repeat' | 'else' | 'comment';
     text: string;
+    /** Names the instruction reads, with any `$root.`, `$parent.` or `$this.` prefix kept. */
     dataRefs: string[];
     children: TreeNode[];
     row?: boolean;
@@ -59,10 +62,12 @@ export interface TreeNode {
 export const ELSE_MARK: string;
 
 export function readTemplate(path: string): Template;
+/** A name reached through a scope prefix keeps it: `$root.caseRef`, `$parent.court.name`, `$this.role`. A bare name is read from the current repeat item only. */
 export function dataRefs(instruction: string): string[];
 export function text(template: TemplateInput): { part: string; lines: { kind: 'para' | 'row'; loc: string; text: string }[] }[];
 export function fields(template: TemplateInput): Record<string, unknown>[];
 export function instructionTree(template: TemplateInput): { part: string; children: TreeNode[] }[];
+export function templateSchema(template: TemplateInput): InferResult;
 export function check(template: TemplateInput): CheckResult;
 export function diff(oldTemplate: TemplateInput, newTemplate: TemplateInput): DiffResult;
 export function unpack(file: string, dir: string): unknown;

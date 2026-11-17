@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { strToU8, zipSync } from 'fflate';
 import { describe, expect, it } from 'vitest';
 import { inferSchema, schemaPaths } from '../src/schema';
-import { CachedTemplateReader, readInstructionTree } from '../src/templateTree';
+import { CachedTemplateReader, readInstructionTree, readTemplateSchema } from '../src/templateTree';
 import type { InstructionNode } from '../src/tree';
 
 function docx(paragraphs: string[]): string {
@@ -28,6 +28,7 @@ describe('readInstructionTree', () => {
       '<<rs_defendants>><<name>> <<address.line1>><<es_>>',
     ]);
     const { root, warnings } = inferSchema(await readInstructionTree(file));
+    expect(readTemplateSchema(file)).toEqual({ root, warnings });
     expect(warnings).toEqual([]);
     expect(Object.fromEntries(schemaPaths(root).map((p) => [p.path, p.kind]))).toEqual({
       referenceNumber: 'string',

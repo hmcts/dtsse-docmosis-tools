@@ -1,10 +1,8 @@
+import type { TreeNode } from './docx.js';
+
 /** The parts of an instructionTree node that inference reads. */
-export interface InstructionNode {
-    type: 'field' | 'condition' | 'repeat' | 'else' | 'comment';
-    text: string;
-    dataRefs: string[];
+export interface InstructionNode extends Pick<TreeNode, 'type' | 'text' | 'dataRefs' | 'row'> {
     children: InstructionNode[];
-    row?: boolean;
 }
 
 export type ScalarKind = 'string' | 'boolean' | 'date';
@@ -42,3 +40,4 @@ export function normaliseQuotes(text: string): string;
 export function inferSchema(tree: InstructionNode[]): InferResult;
 export function schemaPaths(schema: ObjectSchema, prefix?: string): { path: string; kind: Schema['kind'] }[];
 export function summarise(schema: ObjectSchema): { fields: number; booleans: number; dates: number; repeats: number; strings: number };
+export function resolveScopedPath(scopes: string[], ref: string): string;

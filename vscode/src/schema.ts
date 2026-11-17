@@ -1,9 +1,10 @@
-export { inferSchema, normaliseQuotes, schemaPaths, summarise } from '@hmcts-cft/docmosis-tools';
+export { inferSchema, normaliseQuotes, resolveScopedPath, schemaPaths, summarise } from '@hmcts-cft/docmosis-tools/schema';
 export type {
   ArraySchema,
   InferResult,
+  InstructionNode,
   ObjectSchema,
   ScalarKind,
   ScalarSchema,
   Schema,
-} from '@hmcts-cft/docmosis-tools';
+} from '@hmcts-cft/docmosis-tools/schema';

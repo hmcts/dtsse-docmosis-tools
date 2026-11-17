@@ -72,3 +72,43 @@ describe('fieldsForFailure', () => {
     expect(fieldsForFailure(failure('{somethingElse}'), index)).toEqual([]);
   });
 });
+
+describe('indexInstructions scope prefixes', () => {
+  const tree = [
+    field('{caseRef}', ['caseRef']),
+    rep('parties', [
+      field('{$root.caseRef}', ['$root.caseRef']),
+      field('{$this.role}', ['$this.role']),
+      field('{name}', ['name']),
+      rep('addresses', [
+        field('{$parent.role}', ['$parent.role']),
+        field('{$root.court.name}', ['$root.court.name']),
+        field('{$this.line}', ['$this.line']),
+      ]),
+    ]),
+    field('{court.name}', ['court.name']),
+    rep('$root.agents', [field('{$this.id}', ['$this.id']), field('{$parent.caseRef}', ['$parent.caseRef'])]),
+  ];
+  const index = indexInstructions(tree, inferSchema(tree).root);
+  const pathsFor = (text: string) => index.find((e) => e.text === text)?.paths;
+
+  it('resolves $root from inside a repeat', () => {
+    expect(pathsFor('{$root.caseRef}')).toEqual(['caseRef']);
+    expect(pathsFor('{$root.court.name}')).toEqual(['court.name']);
+  });
+
+  it('resolves $this and bare names to the current scope', () => {
+    expect(pathsFor('{$this.role}')).toEqual(['parties[].role']);
+    expect(pathsFor('{name}')).toEqual(['parties[].name']);
+    expect(pathsFor('{$this.line}')).toEqual(['parties[].addresses[].line']);
+  });
+
+  it('resolves $parent to the enclosing scope, and to the root at the top level', () => {
+    expect(pathsFor('{$parent.role}')).toEqual(['parties[].role']);
+    expect(pathsFor('{$parent.caseRef}')).toEqual(['caseRef']);
+  });
+
+  it('resolves a $root repeat target', () => {
+    expect(pathsFor('{$this.id}')).toEqual(['agents[].id']);
+  });
+});
