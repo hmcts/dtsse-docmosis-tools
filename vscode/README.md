@@ -27,7 +27,7 @@ Data is saved on every render at `<workspaceFolder>/.hmcts-template-preview/<tem
 
 ## The Templates view
 
-The **HMCTS Templates** icon in the Activity Bar opens a **Templates** view that lists the `.docx` templates in one or more GitHub repositories. The repositories don't need to be cloned. Click a template to open it in the preview. **Search templates** (the search button in the view's title bar, or the command palette) searches every template by file name and folder. You can also type in the view to filter it.
+The **HMCTS Templates** icon in the Activity Bar opens a **Templates** view that lists the `.docx` templates in one or more GitHub repositories. The repositories don't need to be cloned. Click a template to open it in the preview. **Search templates** (the search button in the view's title bar, or the command palette) searches every template by file name and folder. Typing in the tree only matches folders that are expanded, so use Search to find a template.
 
 By default the view lists the `Templates/` folder of [hmcts/rdo-docmosis](https://github.com/hmcts/rdo-docmosis), so it works with no configuration. To list other repositories, set `hmctsTemplatePreview.templateLibraries`, usually in the workspace settings of the workspace that uses them. The setting replaces the default rather than adding to it, so include the hmcts/rdo-docmosis entry to keep it alongside the others:
 
@@ -52,7 +52,7 @@ The same repository can be listed more than once at different refs or folders. O
 
 The view uses your VS Code GitHub sign-in, or the GitHub CLI's login (`gh auth login`) if VS Code has none. If GitHub rejects one of these tokens, the view tries the other before it shows a **Sign in to GitHub** button. For a repository in an organisation that uses SAML single sign-on, the token must be authorised for that organisation; the error message links to the page that does this.
 
-The file list is saved, so the view shows it at once and checks GitHub in the background for changes when it opens, at most every 5 minutes. A check that finds no change doesn't count against GitHub's rate limit. **Refresh** checks now. Opening a template also checks its library when the last check is more than 5 minutes old, without waiting for the check. A template is downloaded the first time you open it, and again only when its content changes, including when that check finds a newer version of a template you just opened. Downloads are kept in the extension's global storage under `libraries/<owner>/<repo>/<ref>/<path in the repo>`, where `<ref>` is `default` for the default branch and otherwise the ref's name made safe for a file name, plus a short hash of it. Each version of a template from one ref is downloaded to the same path, so a preview that is open reloads when a newer version arrives and keeps its saved data, and libraries on the same repository at different refs keep separate copies. Changes you make to a downloaded copy are overwritten when a newer version is downloaded.
+The file list is saved, so the view shows it at once and checks it against GitHub in the background. **Refresh** checks now. A template is downloaded the first time you open it and again only when it changes, and an open preview reloads with the new version; edits you make to a downloaded copy are overwritten when a newer version arrives.
 
 ## The docmosis command in the terminal
 
