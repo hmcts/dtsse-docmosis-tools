@@ -4,7 +4,7 @@
 import assert from 'node:assert/strict';
 import { createHmac } from 'node:crypto';
 import { afterEach, beforeEach, describe, mock, test } from 'node:test';
-import { KeyStore, KeyVaultError, NotifyApiError, NotifyClient, notifyApiOverride, notifyApiUrl, parseApiKey, readSecret, signToken } from '../lib/notify-node.mjs';
+import { KeyStore, KeyVaultError, NotifyApiError, NotifyClient, parseApiKey, readSecret, signToken } from '../lib/notify-node.mjs';
 
 const SERVICE = '26785a09-ab16-4eb0-8407-a37497a57506';
 const SECRET = '3d844edf-8d35-48ac-975b-e847b4f122b0';
@@ -130,17 +130,12 @@ describe('NotifyClient', () => {
         await assert.rejects(down.listTemplates(), { message: "Can't reach GOV.UK Notify at https://notify.test: ENOTFOUND notify.test" });
     });
 
-    test('uses HMCTS_TEMPLATE_PREVIEW_NOTIFY_URL over the public API', async () => {
-        process.env.NOTIFY_API_URL = 'http://127.0.0.1:1/';
-        assert.equal(notifyApiUrl(), 'https://api.notifications.service.gov.uk');
-        assert.equal(notifyApiOverride(), undefined);
-        delete process.env.NOTIFY_API_URL;
+    test('uses the public API without a baseUrl, whatever the environment says', async () => {
         process.env.HMCTS_TEMPLATE_PREVIEW_NOTIFY_URL = 'http://127.0.0.1:9999/';
-        assert.equal(notifyApiUrl(), 'http://127.0.0.1:9999');
-        assert.equal(notifyApiOverride(), 'http://127.0.0.1:9999');
+        process.env.NOTIFY_API_URL = 'http://127.0.0.1:1/';
         const fetchMock = mock.method(globalThis, 'fetch', async () => new Response('{"templates":[]}'));
         await new NotifyClient(KEY).listTemplates();
-        assert.equal(fetchMock.mock.calls[0].arguments[0], 'http://127.0.0.1:9999/v2/templates');
+        assert.equal(fetchMock.mock.calls[0].arguments[0], 'https://api.notifications.service.gov.uk/v2/templates');
     });
 });
 

@@ -1,11 +1,10 @@
 import type { NotifyProduct } from '@hmcts-cft/docmosis-tools/notify/products';
-import { NOTIFY_URL_ENV, notifyApiOverride } from '@hmcts-cft/docmosis-tools/notify/node';
 import * as vscode from 'vscode';
 import { errorMessage } from '../errorMessage';
 import { webviewHtml } from '../webviewHtml';
 import type { HostToPicker, PickerToHost, TemplateSummary } from './messages';
 import type { NotifyPanels } from './panel';
-import type { NotifyService } from './service';
+import { NOTIFY_URL_ENV, notifyApiOverride, type NotifyService } from './service';
 
 export const PICKER_VIEW_ID = 'hmctsTemplatePreview.notifyTemplates';
 const SELECTED_KEY = 'notify.product';

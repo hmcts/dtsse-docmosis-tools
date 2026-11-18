@@ -17,15 +17,8 @@ export class NotifyApiError extends Error {
     readonly errors: { error: string; message: string }[];
 }
 
-/** The environment variable that points the client at another Notify API, such as a local stand-in. */
-export const NOTIFY_URL_ENV: 'HMCTS_TEMPLATE_PREVIEW_NOTIFY_URL';
-/** The URL in NOTIFY_URL_ENV without trailing slashes, when it is set and not blank. */
-export function notifyApiOverride(): string | undefined;
-/** notifyApiOverride(), else the public Notify API. */
-export function notifyApiUrl(): string;
-
 export interface ClientOptions {
-    /** Surrounding whitespace and trailing slashes are dropped. Defaults to notifyApiUrl() when the client is made, also when blank or only slashes. */
+    /** Surrounding whitespace and trailing slashes are dropped. Defaults to the public Notify API (NOTIFY_API_URL), also when blank or only slashes. */
     baseUrl?: string;
     fetchImpl?: typeof fetch;
 }

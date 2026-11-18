@@ -155,7 +155,7 @@ Three exports hold the GOV.UK Notify template support behind the extension's Not
 
 `@hmcts-cft/docmosis-tools/notify/node` needs Node:
 
-- `new NotifyClient(apiKey, { baseUrl, fetchImpl })` lists (`listTemplates(type?)`), reads (`getTemplate(id)`) and previews (`previewTemplate(id, personalisation, signal?)`) templates, and can't change them. It signs each request with the key (`parseApiKey`, `signToken`). It uses `baseUrl`, else `HMCTS_TEMPLATE_PREVIEW_NOTIFY_URL` when set and not blank (`notifyApiOverride()`), else the public API. A refusal throws `NotifyApiError` with `status` and Notify's `errors`.
+- `new NotifyClient(apiKey, { baseUrl, fetchImpl })` lists (`listTemplates(type?)`), reads (`getTemplate(id)`) and previews (`previewTemplate(id, personalisation, signal?)`) templates, and can't change them. It signs each request with the key (`parseApiKey`, `signToken`). It uses `baseUrl` when given, else the public API. A refusal throws `NotifyApiError` with `status` and Notify's `errors`.
 - `readSecret(vault, secret)` reads a key with `az keyvault secret show` under the user's own `az login`, without a shell, and throws `KeyVaultError` with a message to show a person (not signed in, no access, no such secret, `az` missing). `KeyStore` keeps the keys read in memory for the session and drops a failed read.
 
 ```js
