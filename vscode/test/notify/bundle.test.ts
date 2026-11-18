@@ -3,7 +3,7 @@ import * as esbuild from 'esbuild';
 import { describe, expect, it } from 'vitest';
 
 describe('Notify editor bundle', () => {
-  it("leaves out the built-in product table's vaults and secrets", async () => {
+  it('leaves out the product table in @hmcts-cft/docmosis-tools/notify/products', async () => {
     const result = await esbuild.build({
       absWorkingDir: fileURLToPath(new URL('../..', import.meta.url)),
       entryPoints: ['src/notify/webview/editor.ts'],

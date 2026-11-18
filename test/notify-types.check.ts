@@ -14,11 +14,14 @@
 //   .d.ts, so a declaration that is wrong but that the code compiles against still passes.
 import * as notify from '../lib/notify.mjs';
 import * as notifyNode from '../lib/notify-node.mjs';
+import * as notifyProducts from '../lib/notify-products.mjs';
 import type * as NotifyDeclared from '../lib/notify.js';
 import type * as NotifyNodeDeclared from '../lib/notify-node.js';
+import type * as NotifyProductsDeclared from '../lib/notify-products.js';
 
 notify satisfies typeof NotifyDeclared;
 notifyNode satisfies typeof NotifyNodeDeclared;
+notifyProducts satisfies typeof NotifyProductsDeclared;
 
 type Equal<A, B> = (<T>() => T extends A ? 1 : 2) extends <T>() => T extends B ? 1 : 2 ? true : false;
 type Fn = (...args: never) => unknown;
@@ -62,3 +65,5 @@ true satisfies Report<Exclude<keyof typeof notify, keyof typeof NotifyDeclared>>
 true satisfies Report<Exclude<keyof typeof notifyNode, keyof typeof NotifyNodeDeclared>>;
 true satisfies Report<ModuleMismatches<typeof notify, typeof NotifyDeclared>>;
 true satisfies Report<ModuleMismatches<typeof notifyNode, typeof NotifyNodeDeclared>>;
+true satisfies Report<Exclude<keyof typeof notifyProducts, keyof typeof NotifyProductsDeclared>>;
+true satisfies Report<ModuleMismatches<typeof notifyProducts, typeof NotifyProductsDeclared>>;

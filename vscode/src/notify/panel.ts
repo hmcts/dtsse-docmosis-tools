@@ -1,6 +1,7 @@
 import * as fsp from 'node:fs/promises';
 import * as path from 'node:path';
-import { apiPersonalisation, findPlaceholders, templateAdminUrl, type NotifyPreview, type NotifyProduct, type NotifyTemplate } from '@hmcts-cft/docmosis-tools/notify';
+import { apiPersonalisation, findPlaceholders, templateAdminUrl, type NotifyPreview, type NotifyTemplate } from '@hmcts-cft/docmosis-tools/notify';
+import type { NotifyProduct } from '@hmcts-cft/docmosis-tools/notify/products';
 import * as vscode from 'vscode';
 import { isObject, type JsonObject } from '../data';
 import { errorMessage } from '../errorMessage';

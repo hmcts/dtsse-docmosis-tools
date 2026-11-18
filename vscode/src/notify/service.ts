@@ -1,4 +1,5 @@
-import { mergeProducts, type NotifyProduct, type NotifyTemplate } from '@hmcts-cft/docmosis-tools/notify';
+import type { NotifyTemplate } from '@hmcts-cft/docmosis-tools/notify';
+import { mergeProducts, type NotifyProduct } from '@hmcts-cft/docmosis-tools/notify/products';
 import { KeyStore, NotifyClient } from '@hmcts-cft/docmosis-tools/notify/node';
 import * as vscode from 'vscode';
 

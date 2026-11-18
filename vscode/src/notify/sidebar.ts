@@ -1,4 +1,4 @@
-import type { NotifyProduct } from '@hmcts-cft/docmosis-tools/notify';
+import type { NotifyProduct } from '@hmcts-cft/docmosis-tools/notify/products';
 import { NOTIFY_URL_ENV, notifyApiOverride } from '@hmcts-cft/docmosis-tools/notify/node';
 import * as vscode from 'vscode';
 import { errorMessage } from '../errorMessage';

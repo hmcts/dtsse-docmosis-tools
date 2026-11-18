@@ -21,10 +21,14 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: ${{ matrix.node-version }}
-          cache: npm
+          cache: ${{ matrix.node-version == 24 && 'npm' || '' }}
           cache-dependency-path: package-lock.json
-      - run: npm ci --ignore-scripts
-      - run: npm run typecheck
+      # The dev dependencies are only for the type-check, which needs one Node version; the rest
+      # of the job runs without installing anything.
+      - if: matrix.node-version == 24
+        run: npm ci --ignore-scripts
+      - if: matrix.node-version == 24
+        run: npm run typecheck
       - run: node bin/docmosis.mjs --help
       - run: bin/docmosis --help
       - run: node --test test/*.test.mjs

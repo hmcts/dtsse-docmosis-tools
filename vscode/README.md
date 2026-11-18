@@ -70,7 +70,7 @@ Placeholders are matched to data the way Notify matches them, ignoring case, spa
 
 Each template's form data is saved at `.hmcts-template-preview/notify/<product>/<template id>/default.json` and its draft at `draft.json`, beside the Docmosis data and likewise never committed. The draft records the Notify version it was started from, and a banner warns when Notify's template has changed since.
 
-The products, with the vault and secret of each, are built in (`BUILT_IN_PRODUCTS` in the package's `lib/notify.mjs`). Add a product, or replace a built-in one by its `id`, with the `hmctsTemplatePreview.notify.products` setting:
+The products, with the vault and secret of each, are built in (`BUILT_IN_PRODUCTS` in the package's `lib/notify-products.mjs`). Add a product, or replace a built-in one by its `id`, with the `hmctsTemplatePreview.notify.products` setting:
 
 ```json
 "hmctsTemplatePreview.notify.products": [
@@ -120,7 +120,7 @@ Open this folder in VS Code and press F5 to start an Extension Development Host,
 
 Source layout: `src/schema.ts` infers the schema from an instruction tree (pure); `src/templateTree.ts` is the only code that reads a `.docx`; `src/render.ts` calls `renderFile` and drops stale results; `src/webview/` is the form and PDF pane; `src/messages.ts` types the host and webview messages; `src/webviewHtml.ts` builds the pages' HTML and CSP; `src/library/` is the Templates view, where only `view.ts` uses the VS Code API.
 
-Notify: the package's `lib/notify.mjs` holds the product table, finds `((placeholders))`, builds the form's schema and makes the approximate Edit preview, and `lib/notify-node.mjs` reads keys with `az` and signs requests to the Notify API; in `src/notify/`, `sidebar.ts` is the side view and `panel.ts` the editor tab, with `service.ts` sharing keys and template lists between them; `storage.ts` saves data and drafts; `messages.ts` types their messages; `webview/` holds the two webviews.
+Notify: the package's `lib/notify-products.mjs` holds the product table, `lib/notify.mjs` finds `((placeholders))`, builds the form's schema and makes the approximate Edit preview, and `lib/notify-node.mjs` reads keys with `az` and signs requests to the Notify API; in `src/notify/`, `sidebar.ts` is the side view and `panel.ts` the editor tab, with `service.ts` sharing keys and template lists between them; `storage.ts` saves data and drafts; `messages.ts` types their messages; `webview/` holds the two webviews.
 
 ## Limits
 

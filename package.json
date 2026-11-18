@@ -38,6 +38,10 @@
       "types": "./lib/notify-node.d.ts",
       "default": "./lib/notify-node.mjs"
     },
+    "./notify/products": {
+      "types": "./lib/notify-products.d.ts",
+      "default": "./lib/notify-products.mjs"
+    },
     "./package.json": "./package.json"
   },
   "files": [
@@ -58,7 +62,7 @@
     "typecheck": "tsc -p tsconfig.browser.json && tsc -p tsconfig.json"
   },
   "devDependencies": {
-    "@types/node": "^26.0.0",
+    "@types/node": "^24.19.2",
     "typescript": "^7.0.0"
   }
 }

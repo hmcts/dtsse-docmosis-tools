@@ -9,6 +9,8 @@
   },
   "include": [
     "lib/notify.mjs",
-    "lib/notify.d.ts"
+    "lib/notify.d.ts",
+    "lib/notify-products.mjs",
+    "lib/notify-products.d.ts"
   ]
 }
