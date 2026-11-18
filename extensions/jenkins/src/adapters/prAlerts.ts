@@ -3,6 +3,8 @@ import * as vscode from 'vscode';
 import {
   type AlertState,
   anyPending,
+  awaitingStatus,
+  canRunAlerts,
   EMPTY_ALERT_STATE,
   evaluate,
   type FinishedEvent,
@@ -30,6 +32,7 @@ export async function githubToken(createIfNone: boolean): Promise<string | undef
 export class PrAlerts implements vscode.Disposable {
   private readonly windowId = randomUUID();
   private timer: NodeJS.Timeout | undefined;
+  private generation = 0;
   private stopped = false;
   private offeredSignIn = false;
 
@@ -41,7 +44,8 @@ export class PrAlerts implements vscode.Disposable {
 
   start(): void {
     this.stopped = false;
-    this.schedule(5000);
+    this.generation++;
+    this.schedule(5000, this.generation);
   }
 
   restart(): void {
@@ -49,24 +53,26 @@ export class PrAlerts implements vscode.Disposable {
     this.start();
   }
 
-  private schedule(delay: number): void {
-    if (this.stopped) return;
-    this.timer = setTimeout(() => void this.tick(), delay);
+  private schedule(delay: number, generation: number): void {
+    if (this.stopped || generation !== this.generation) return;
+    this.timer = setTimeout(() => void this.tick(generation), delay);
   }
 
-  private async tick(): Promise<void> {
+  private async tick(generation: number): Promise<void> {
     let delay = IDLE_POLL_MS;
     try {
       delay = await this.poll();
     } catch (error) {
       console.warn(`HMCTS Jenkins PR alerts: ${(error as Error).message}`);
     }
-    this.schedule(delay);
+    this.schedule(delay, generation);
   }
 
   private async poll(): Promise<number> {
     const config = vscode.workspace.getConfiguration('dtsseJenkins');
     if (!config.get<boolean>('prAlerts.enabled', true)) return IDLE_POLL_MS;
+    const scope = config.get<string>('prAlerts.scope', 'workspace');
+    if (!canRunAlerts(scope, this.workspace.repos.length)) return IDLE_POLL_MS;
 
     const globalState = this.context.globalState;
     const { leader, lease } = acquireLease(globalState.get<Lease>(LEASE_KEY), this.windowId, Date.now());
@@ -80,7 +86,7 @@ export class PrAlerts implements vscode.Disposable {
     }
 
     let prs = await searchMyOpenPrs(token);
-    if (config.get<string>('prAlerts.scope', 'workspace') === 'workspace') {
+    if (scope === 'workspace') {
       const slugs = new Set(this.workspace.repos.map((repo) => repo.slug.toLowerCase()));
       prs = prs.filter((pr) => slugs.has(pr.slug.toLowerCase()));
     }
@@ -90,7 +96,7 @@ export class PrAlerts implements vscode.Disposable {
     await globalState.update(STATE_KEY, next);
     for (const event of events) void this.notifyFinished(event);
     await this.checkInputs(prs);
-    return nextPollDelay(anyPending(prs));
+    return nextPollDelay(anyPending(prs) || awaitingStatus(previous, prs));
   }
 
   private async checkInputs(prs: OpenPr[]): Promise<void> {
@@ -109,13 +115,13 @@ export class PrAlerts implements vscode.Disposable {
         );
         if (!marked.isNew) continue;
         await this.context.globalState.update(STATE_KEY, marked.state);
-        const choice = await vscode.window.showWarningMessage(
-          formatInputAlert(pr, stage.name),
-          'Open Build',
-          'Open PR',
-        );
-        if (choice === 'Open Build') void vscode.env.openExternal(vscode.Uri.parse(build.buildUrl));
-        else if (choice === 'Open PR') void vscode.env.openExternal(vscode.Uri.parse(pr.url));
+        const buildUrl = build.buildUrl;
+        void vscode.window
+          .showWarningMessage(formatInputAlert(pr, stage.name), 'Open Build', 'Open PR')
+          .then((choice) => {
+            if (choice === 'Open Build') void vscode.env.openExternal(vscode.Uri.parse(buildUrl));
+            else if (choice === 'Open PR') void vscode.env.openExternal(vscode.Uri.parse(pr.url));
+          });
       } catch {
         // Off the VPN the stages are unreachable; the status-based alerts still work.
       }

@@ -17,7 +17,8 @@ Download `dtsse-jenkins.vsix` from the CI run's artifacts, then run **Extensions
 
 Jenkins uses basic auth with your username and an API token. The extension reads, in order:
 
-1. `.claude/.jenkins.env` in the workspace folder, with literal `KEY=VALUE` lines (`#` comments and blank lines are skipped):
+1. Credentials stored by **HMCTS Jenkins: Set Credentials** in VS Code's secret storage.
+2. `.claude/.jenkins.env` in the workspace folder, with literal `KEY=VALUE` lines (`#` comments and blank lines are skipped):
 
    ```
    JENKINS_URL=https://build.hmcts.net
@@ -26,7 +27,6 @@ Jenkins uses basic auth with your username and an API token. The extension reads
    ```
 
    `JENKINS_URL` is optional.
-2. Credentials stored by **HMCTS Jenkins: Set Credentials** in VS Code's secret storage.
 
 PR alerts sign in to GitHub through VS Code (`repo` scope) the first time you accept the prompt.
 

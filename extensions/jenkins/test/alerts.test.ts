@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
   type AlertState,
   anyPending,
+  awaitingStatus,
+  canRunAlerts,
   EMPTY_ALERT_STATE,
   evaluate,
   formatAlert,
@@ -63,6 +65,23 @@ describe('anyPending / prKey', () => {
   it('keys by slug and number', () => expect(prKey(pr([]))).toBe('hmcts/pcs-api#123'));
 });
 
+describe('awaitingStatus / canRunAlerts', () => {
+  const tracked: AlertState = { prs: { 'hmcts/pcs-api#123': { sha: 'old', state: 'success' } }, inputs: [] };
+  it('detects a tracked PR with a new head and no status', () => {
+    expect(awaitingStatus(tracked, [pr([], 'new')])).toBe(true);
+    expect(awaitingStatus(tracked, [pr([], 'old')])).toBe(false);
+    expect(awaitingStatus(tracked, [pr([status('PENDING')], 'new')])).toBe(false);
+    expect(awaitingStatus(EMPTY_ALERT_STATE, [pr([], 'new')])).toBe(false);
+    const none: AlertState = { prs: { 'hmcts/pcs-api#123': { sha: 'new', state: 'none' } }, inputs: [] };
+    expect(awaitingStatus(none, [pr([], 'new')])).toBe(true);
+  });
+  it('needs repos unless the scope is all', () => {
+    expect(canRunAlerts('workspace', 0)).toBe(false);
+    expect(canRunAlerts('workspace', 3)).toBe(true);
+    expect(canRunAlerts('all', 0)).toBe(true);
+  });
+});
+
 describe('evaluate', () => {
   it('sets a baseline without alerting for PRs seen first time', () => {
     const { next, events } = evaluate(EMPTY_ALERT_STATE, [
@@ -74,6 +93,30 @@ describe('evaluate', () => {
     expect(next.prs['hmcts/pcs-api#123']).toEqual({ sha: 'sha1', state: 'failure' });
     expect(next.prs['hmcts/pcs-api#2']).toEqual({ sha: 's', state: 'pending' });
     expect(Object.keys(next.prs)).toHaveLength(2);
+  });
+
+  it('keeps a tracked PR whose new head has no status yet, and alerts when it finishes', () => {
+    const previous: AlertState = {
+      prs: { 'hmcts/pcs-api#123': { sha: 'old', state: 'success' } },
+      inputs: [],
+    };
+    const first = evaluate(previous, [pr([], 'new')]);
+    expect(first.events).toEqual([]);
+    expect(first.next.prs['hmcts/pcs-api#123']).toEqual({ sha: 'new', state: 'none' });
+    const same = evaluate(first.next, [pr([], 'new')]);
+    expect(same.next.prs['hmcts/pcs-api#123']).toEqual({ sha: 'new', state: 'none' });
+    expect(evaluate(first.next, [pr([status('FAILURE')], 'new')]).events).toHaveLength(1);
+  });
+
+  it('keeps the entry when the status disappears on the same head', () => {
+    const previous: AlertState = {
+      prs: { 'hmcts/pcs-api#123': { sha: 'sha1', state: 'success' } },
+      inputs: [],
+    };
+    expect(evaluate(previous, [pr([])]).next.prs['hmcts/pcs-api#123']).toEqual({
+      sha: 'sha1',
+      state: 'success',
+    });
   });
 
   it('alerts on pending to finished, with the target url', () => {

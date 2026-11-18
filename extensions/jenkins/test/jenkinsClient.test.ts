@@ -122,11 +122,24 @@ describe('JenkinsClient requests', () => {
     expect(err.message).toContain('ENOTFOUND');
   });
 
-  it('treats an HTML login page as an auth problem', async () => {
-    const err = await client(fakeFetch(() => new Response('<html>', { status: 200 })))
+  it('treats a redirect to the login page as an auth problem', async () => {
+    const err = await client(
+      fakeFetch(() => {
+        const response = new Response('<html>', { status: 200 });
+        Object.defineProperty(response, 'url', { value: 'https://j/login?from=%2F' });
+        return response;
+      }),
+    )
       .listViewsWithJobs()
       .catch((e) => e);
     expect(err.kind).toBe('auth');
+  });
+
+  it('reports other non-JSON responses as an http problem', async () => {
+    const err = await client(fakeFetch(() => new Response('<html>', { status: 200 })))
+      .listViewsWithJobs()
+      .catch((e) => e);
+    expect(err.kind).toBe('http');
   });
 });
 

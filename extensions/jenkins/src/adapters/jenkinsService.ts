@@ -11,6 +11,7 @@ export class JenkinsService implements vscode.Disposable {
   state: ServiceState = 'ready';
   baseUrl = '';
   private cached: JenkinsClient | undefined;
+  private creds: Awaited<ReturnType<typeof loadCredentials>>;
   private warnedAuth = false;
 
   constructor(
@@ -20,12 +21,13 @@ export class JenkinsService implements vscode.Disposable {
 
   invalidate(): void {
     this.cached = undefined;
+    this.creds = undefined;
     this.warnedAuth = false;
   }
 
   /** Undefined when there are no credentials; the state is then `noCredentials`. */
   async client(timeoutMs?: number): Promise<JenkinsClient | undefined> {
-    const creds = await loadCredentials(this.workspace.root, this.secrets);
+    const creds = (this.creds ??= await loadCredentials(this.workspace.root, this.secrets));
     if (!creds) {
       this.setState('noCredentials');
       return undefined;
@@ -47,6 +49,7 @@ export class JenkinsService implements vscode.Disposable {
     if (!(error instanceof JenkinsError)) throw error;
     if (error.kind === 'notFound') return true;
     if (error.kind === 'network') this.setState('vpnDown');
+    else if (error.kind === 'http') this.setState('vpnDown');
     else if (error.kind === 'auth') {
       this.setState('noCredentials');
       void this.warnAuth();

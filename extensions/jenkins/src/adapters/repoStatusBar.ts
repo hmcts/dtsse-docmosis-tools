@@ -10,6 +10,7 @@ export class RepoStatusBar implements vscode.Disposable {
   private readonly item: vscode.StatusBarItem;
   private buildUrl: string | undefined;
   private timer: NodeJS.Timeout | undefined;
+  private latestRequest = 0;
 
   constructor(
     private readonly workspace: CftWorkspace,
@@ -30,17 +31,21 @@ export class RepoStatusBar implements vscode.Disposable {
   }
 
   async update(): Promise<void> {
+    const request = ++this.latestRequest;
     const fsPath = vscode.window.activeTextEditor?.document.uri.fsPath;
     const relative = fsPath ? this.workspace.relativePath(fsPath) : undefined;
     const repo = relative ? repoForPath(this.workspace.repos, relative) : undefined;
     const client = repo ? await this.jenkins.client() : undefined;
+    if (request !== this.latestRequest) return;
     if (!repo || !client) {
       this.item.hide();
       return;
     }
     try {
       const build = await this.lastMasterBuild(repo.name);
+      if (request !== this.latestRequest) return;
       if (!build) {
+        this.item.backgroundColor = undefined;
         this.item.text = `$(circle-outline) ${repo.name} master: no build`;
         this.buildUrl = undefined;
       } else {
@@ -54,11 +59,14 @@ export class RepoStatusBar implements vscode.Disposable {
       this.item.show();
       this.jenkins.markReady();
     } catch (error) {
+      if (request !== this.latestRequest) return;
       if (this.jenkins.handleError(error)) {
+        this.item.backgroundColor = undefined;
         this.item.text = `$(circle-outline) ${repo.name}: no Jenkins job`;
         this.buildUrl = undefined;
         this.item.show();
       } else {
+        this.item.backgroundColor = undefined;
         this.item.hide();
       }
     }

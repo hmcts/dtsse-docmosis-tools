@@ -10,6 +10,12 @@ export async function loadCredentials(
   root: string | undefined,
   secrets: vscode.SecretStorage,
 ): Promise<(JenkinsCredentials & { url: string }) | undefined> {
+  const [url, username, token] = await Promise.all([
+    secrets.get(KEYS.url),
+    secrets.get(KEYS.username),
+    secrets.get(KEYS.token),
+  ]);
+  if (username && token) return { url: url || DEFAULT_JENKINS_URL, username, token };
   if (root) {
     try {
       const fromFile = credentialsFromEnv(
@@ -17,15 +23,10 @@ export async function loadCredentials(
       );
       if (fromFile) return { ...fromFile, url: fromFile.url ?? DEFAULT_JENKINS_URL };
     } catch {
-      // No env file: fall back to stored credentials.
+      // No usable env file.
     }
   }
-  const [url, username, token] = await Promise.all([
-    secrets.get(KEYS.url),
-    secrets.get(KEYS.username),
-    secrets.get(KEYS.token),
-  ]);
-  return username && token ? { url: url || DEFAULT_JENKINS_URL, username, token } : undefined;
+  return undefined;
 }
 
 export async function promptForCredentials(secrets: vscode.SecretStorage): Promise<boolean> {

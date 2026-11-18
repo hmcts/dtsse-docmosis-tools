@@ -109,8 +109,13 @@ export class JenkinsClient {
     try {
       return (await response.json()) as T;
     } catch {
-      // An unauthenticated or login-redirected response is HTML rather than JSON.
-      throw new JenkinsError('auth', 'Jenkins did not return JSON; the credentials may be missing');
+      if (/\/login|securityRealm/i.test(response.url)) {
+        throw new JenkinsError(
+          'auth',
+          'Jenkins redirected to its login page; the credentials may be missing',
+        );
+      }
+      throw new JenkinsError('http', 'Jenkins returned a response that was not JSON', response.status);
     }
   }
 
