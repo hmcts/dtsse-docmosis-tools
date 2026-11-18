@@ -92,7 +92,7 @@ Set `hmctsTemplatePreview.terminalCommand` to `false` to stop adding it. Outside
 - **GitHub release:** download `hmcts-template-preview.vsix` from the [latest release](https://github.com/hmcts/dtsse-ide-tooling/releases/latest) and run `code --install-extension hmcts-template-preview.vsix`. Releases are tagged `vscode-v0.1.<run number>`.
 - **Devcontainer:** the cft-workspace devcontainer runs `.devcontainer/install-template-preview.sh` on attach, which installs the latest release's `.vsix` into the attached VS Code and updates it when a newer release appears.
 
-To build it yourself (Node 20 or later and npm):
+To build it yourself (Node 24 or later and npm):
 
 ```sh
 npm ci

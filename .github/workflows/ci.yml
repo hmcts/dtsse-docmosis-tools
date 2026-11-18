@@ -39,7 +39,7 @@ jobs:
           node-version: 24
           cache: npm
           cache-dependency-path: package-lock.json
-      - run: npm ci
+      - run: npm ci --ignore-scripts
       - run: npm run build
         working-directory: extensions/template-preview
       - run: npm test

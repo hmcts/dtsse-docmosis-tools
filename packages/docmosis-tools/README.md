@@ -5,13 +5,12 @@ Tools for reading, editing, checking and rendering Docmosis `.docx` template fil
 - `bin/docmosis.mjs`: a CLI that lists a template's fields and blocks, finds broken conditionals and repeats, unpacks a template to XML and packs it back, diffs two versions, and renders a template file on the hosted dtsse-doc-render.
 - `lib/docx.mjs` and `lib/render.mjs`: the template and render libraries the CLI uses, importable as ES modules from `@hmcts-cft/docmosis-tools`.
 - `lib/notify.mjs`, `lib/notify-products.mjs` and `lib/notify-node.mjs`: GOV.UK Notify template support (see [Notify](#notify)), used by the extension's Notify editor.
-- `extensions/template-preview/`: HMCTS Template Preview, a VS Code extension that builds an input form from a template and renders it beside the form through the hosted dtsse-doc-render. See [extensions/template-preview/README.md](../../extensions/template-preview/README.md).
 
 ## Install
 
 ### Inside VS Code
 
-Install the HMCTS Template Preview extension (see [extensions/template-preview/README.md](../../extensions/template-preview/README.md)). It puts the `docmosis` command on the PATH of VS Code's integrated terminals, with nothing else to install. The command uses your Node when that is 24 or later and VS Code's own Node otherwise. It appears in terminals opened after the extension activates, so reopen any terminal that was already open, and the `hmctsTemplatePreview.terminalCommand` setting turns it off.
+Install the HMCTS Template Preview extension (see [its README](https://github.com/hmcts/dtsse-ide-tooling/tree/master/extensions/template-preview)). It puts the `docmosis` command on the PATH of VS Code's integrated terminals, with nothing else to install. The command uses your Node when that is 24 or later and VS Code's own Node otherwise. It appears in terminals opened after the extension activates, so reopen any terminal that was already open, and the `hmctsTemplatePreview.terminalCommand` setting turns it off.
 
 ### Outside VS Code
 
