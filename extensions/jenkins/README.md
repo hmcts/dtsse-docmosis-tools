@@ -64,8 +64,3 @@ npm run package   # builds dist/extension.cjs and dtsse-jenkins-vscode.vsix
 ```
 
 Logic lives in `src/core` (pure, no `vscode` import); `src/adapters` and `src/extension.ts` are thin VS Code wiring and are excluded from coverage.
-
-## Icons
-
-- `media/jenkins.svg`: the Jenkins logo from [Fluent UI MDL2 icons](https://github.com/microsoft/fluentui) (MIT, © Microsoft Corporation), via Iconify.
-- `media/icon.png`: rendered from the Jenkins logo in [Devicon](https://github.com/devicons/devicon) (MIT, © konpa).
