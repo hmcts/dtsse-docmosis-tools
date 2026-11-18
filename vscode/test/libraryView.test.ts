@@ -64,12 +64,27 @@ describe('Templates view', () => {
     vi.restoreAllMocks();
   });
 
-  it('asks for the configuration when no libraries are set', async () => {
-    stub.settings = {};
+  it('asks for the configuration when the libraries are set to none', async () => {
+    stub.settings = { templateLibraries: [] };
     const { provider, fetch } = view();
     expect(await provider.getChildren()).toEqual([]);
     expect(state()).toBe('noLibraries');
     expect(fetch.calls).toHaveLength(0);
+  });
+
+  it('lists the Templates folder of hmcts/rdo-docmosis when the setting is unset', async () => {
+    stub.settings = {};
+    const { provider, fetch } = view(
+      fakeFetch({
+        '/repos/hmcts/rdo-docmosis/commits/HEAD': () => new Response('c1', { headers: { etag: '"c1"' } }),
+        '/repos/hmcts/rdo-docmosis/git/trees/c1?recursive=1': () =>
+          json({ sha: 't1', truncated: false, tree: [blobEntry('Templates/CV-SPC-CLM-ENG-00001.docx'), blobEntry('Other/X.docx')] }),
+      }),
+    );
+    await settle(provider);
+    expect(state()).toBe('ready');
+    expect(labels(provider, await provider.getChildren())).toEqual(['CV-SPC-CLM-ENG-00001.docx']);
+    expect(calls(fetch, '/repos/hmcts/rdo-docmosis/')).not.toHaveLength(0);
   });
 
   it("doesn't touch the network until the view asks for its children", () => {

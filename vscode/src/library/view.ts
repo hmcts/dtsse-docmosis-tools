@@ -4,7 +4,7 @@ import { VIEW_TYPE } from '../previewProvider';
 import { SETTING_SECTION } from '../terminalCommand';
 import { ghToken, resolveToken, type Token } from './auth';
 import { BlobCache } from './blobCache';
-import { LIBRARIES_SETTING, parseLibraries, type LibraryConfig } from './config';
+import { DEFAULT_LIBRARIES, LIBRARIES_SETTING, parseLibraries, type LibraryConfig } from './config';
 import { baseName, FolderMap, formatSize, searchItems, type SearchItem } from './folderMap';
 import { GitHubClient, GitHubError, type FetchLike, type Template } from './github';
 import { IndexStore, MIN_CHECK_INTERVAL_MS, type LibraryIndex } from './indexStore';
@@ -172,7 +172,7 @@ export class TemplateLibraryView implements vscode.TreeDataProvider<Node>, vscod
   }
 
   private readConfig(): void {
-    const parsed = parseLibraries(vscode.workspace.getConfiguration(SETTING_SECTION).get<unknown>(LIBRARIES_SETTING, []));
+    const parsed = parseLibraries(vscode.workspace.getConfiguration(SETTING_SECTION).get<unknown>(LIBRARIES_SETTING, DEFAULT_LIBRARIES));
     this.libraries = parsed.libraries;
     this.configErrors = parsed.errors;
     for (const problem of [...parsed.errors, ...parsed.warnings]) this.output.appendLine(`${SETTING_SECTION}.${LIBRARIES_SETTING}: ${problem}`);

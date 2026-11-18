@@ -29,14 +29,17 @@ Data is saved on every render at `<workspaceFolder>/.hmcts-template-preview/<tem
 
 The **HMCTS Templates** icon in the Activity Bar opens a **Templates** view that lists the `.docx` templates in one or more GitHub repositories. The repositories don't need to be cloned. Click a template to open it in the preview. **Search templates** (the search button in the view's title bar, or the command palette) searches every template by file name and folder. You can also type in the view to filter it.
 
-List the repositories in `hmctsTemplatePreview.templateLibraries`, usually in the workspace settings of the workspace that uses them:
+By default the view lists the `Templates/` folder of [hmcts/rdo-docmosis](https://github.com/hmcts/rdo-docmosis), so it works with no configuration. To list other repositories, set `hmctsTemplatePreview.templateLibraries`, usually in the workspace settings of the workspace that uses them. The setting replaces the default rather than adding to it, so include the hmcts/rdo-docmosis entry to keep it alongside the others:
 
 ```json
 "hmctsTemplatePreview.templateLibraries": [
+  { "repo": "hmcts/rdo-docmosis", "path": "Templates" },
   { "repo": "acme/letters", "path": "templates", "label": "Letters" },
   { "repo": "acme/orders", "ref": "release" }
 ]
 ```
+
+Set it to `[]` to list no repositories. Remove the setting to go back to the default.
 
 | Key | |
 |---|---|
