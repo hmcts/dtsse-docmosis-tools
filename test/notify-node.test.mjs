@@ -80,14 +80,16 @@ describe('NotifyClient', () => {
         assert.equal(calls[1].url, 'https://notify.test/v2/templates?type=a%26b%3Dc');
     });
 
-    test('drops trailing slashes from baseUrl', async () => {
-        const { calls, impl } = fakeFetch(200, { templates: [] });
-        await new NotifyClient(KEY, { baseUrl: 'https://notify.test//', fetchImpl: impl }).listTemplates();
-        assert.equal(calls[0].url, 'https://notify.test/v2/templates');
+    test('drops surrounding whitespace and trailing slashes from baseUrl', async () => {
+        for (const baseUrl of ['https://notify.test//', 'https://notify.test/ ', ' https://notify.test\n']) {
+            const { calls, impl } = fakeFetch(200, { templates: [] });
+            await new NotifyClient(KEY, { baseUrl, fetchImpl: impl }).listTemplates();
+            assert.equal(calls[0].url, 'https://notify.test/v2/templates', `baseUrl ${JSON.stringify(baseUrl)}`);
+        }
     });
 
-    test('uses the public API when baseUrl is empty or only slashes', async () => {
-        for (const baseUrl of ['', '/']) {
+    test('uses the public API when baseUrl is empty, blank or only slashes', async () => {
+        for (const baseUrl of ['', ' ', '/', ' / ']) {
             const { calls, impl } = fakeFetch(200, { templates: [] });
             await new NotifyClient(KEY, { baseUrl, fetchImpl: impl }).listTemplates();
             assert.equal(calls[0].url, 'https://api.notifications.service.gov.uk/v2/templates', `baseUrl ${JSON.stringify(baseUrl)}`);

@@ -15,7 +15,7 @@ export class NotifySidebar implements vscode.WebviewViewProvider, vscode.Disposa
   private view: vscode.WebviewView | undefined;
   private selected: string | undefined;
   /** The product whose templates were last loaded, to tell whether a settings change moved its key. */
-  private loaded: Readonly<NotifyProduct> | undefined;
+  private loaded: NotifyProduct | undefined;
   private load = 0;
   private readonly disposables: vscode.Disposable[] = [];
 
@@ -125,7 +125,7 @@ export class NotifySidebar implements vscode.WebviewViewProvider, vscode.Disposa
     await this.loadTemplates(false);
   }
 
-  private requireProduct(id: string): Readonly<NotifyProduct> {
+  private requireProduct(id: string): NotifyProduct {
     const product = this.service.product(id);
     if (!product) throw new Error(`No Notify product "${id}": check hmctsTemplatePreview.notify.products.`);
     return product;

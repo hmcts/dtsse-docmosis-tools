@@ -25,7 +25,7 @@ export function notifyApiOverride(): string | undefined;
 export function notifyApiUrl(): string;
 
 export interface ClientOptions {
-    /** Trailing slashes are dropped. Defaults to notifyApiUrl() when the client is made, also when empty or only slashes. */
+    /** Surrounding whitespace and trailing slashes are dropped. Defaults to notifyApiUrl() when the client is made, also when blank or only slashes. */
     baseUrl?: string;
     fetchImpl?: typeof fetch;
 }

@@ -44,7 +44,7 @@ export class NotifyPanels {
     private readonly service: NotifyService,
   ) {}
 
-  open(product: Readonly<NotifyProduct>, template: { id: string; name: string }): void {
+  open(product: NotifyProduct, template: { id: string; name: string }): void {
     const id = `${product.id}/${template.id}`;
     const existing = this.sessions.get(id);
     if (existing) {
@@ -99,7 +99,7 @@ export class NotifyEditorSession {
     private readonly output: vscode.OutputChannel,
     private readonly service: NotifyService,
     private readonly documents: NotifyDocuments,
-    private readonly product: Readonly<NotifyProduct>,
+    private readonly product: NotifyProduct,
     private readonly templateId: string,
     readonly panel: vscode.WebviewPanel,
   ) {

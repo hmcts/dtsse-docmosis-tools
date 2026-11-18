@@ -16,9 +16,7 @@
     ]
   },
   "include": [
-    "lib/notify.mjs",
     "lib/notify-node.mjs",
-    "lib/notify.d.ts",
     "lib/notify-node.d.ts",
     "test/notify-types.check.ts"
   ]
