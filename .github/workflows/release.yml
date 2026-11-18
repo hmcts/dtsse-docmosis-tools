@@ -4,12 +4,14 @@ on:
   push:
     branches: [master]
     paths:
-      - bin/**
-      - lib/**
-      - index.mjs
-      - index.d.ts
+      - packages/docmosis-tools/bin/**
+      - packages/docmosis-tools/lib/**
+      - packages/docmosis-tools/index.mjs
+      - packages/docmosis-tools/index.d.ts
+      - packages/docmosis-tools/package.json
+      - extensions/template-preview/**
       - package.json
-      - vscode/**
+      - package-lock.json
 
 permissions:
   contents: write
@@ -28,20 +30,20 @@ jobs:
         with:
           node-version: 24
           cache: npm
-          cache-dependency-path: vscode/package-lock.json
-      - run: node --test test/*.test.mjs
+          cache-dependency-path: package-lock.json
+      - run: npm ci
+      - run: npm test --workspace packages/docmosis-tools
       - name: Set the extension version
         id: version
-        working-directory: vscode
+        working-directory: extensions/template-preview
         run: |
           # The Marketplace rejects a version it already has; the run number only increases.
           version="0.1.${GITHUB_RUN_NUMBER}"
           npm pkg set "version=${version}"
           echo "version=${version}" >> "$GITHUB_OUTPUT"
       - name: Build the extension
-        working-directory: vscode
+        working-directory: extensions/template-preview
         run: |
-          npm ci
           npm test
           npm run package
       - name: Publish the release
@@ -49,7 +51,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VERSION: ${{ steps.version.outputs.version }}
         run: |
-          gh release create "vscode-v${VERSION}" vscode/hmcts-template-preview.vsix \
+          gh release create "vscode-v${VERSION}" extensions/template-preview/hmcts-template-preview.vsix \
             --target "$GITHUB_SHA" \
             --title "vscode-v${VERSION}" \
             --notes "HMCTS Template Preview ${VERSION}, built from ${GITHUB_SHA}." \

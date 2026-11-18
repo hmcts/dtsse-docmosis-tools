@@ -4,11 +4,11 @@ on:
   push:
     branches: [master]
     paths:
-      - bin/**
-      - lib/**
-      - index.mjs
-      - index.d.ts
-      - package.json
+      - packages/docmosis-tools/bin/**
+      - packages/docmosis-tools/lib/**
+      - packages/docmosis-tools/index.mjs
+      - packages/docmosis-tools/index.d.ts
+      - packages/docmosis-tools/package.json
 
 # Overlapping publishes would race on the version number, so a release in progress is never cancelled.
 concurrency:
@@ -21,6 +21,9 @@ jobs:
     # No id-token: Azure Artifacts does not support npm provenance.
     permissions:
       contents: write
+    defaults:
+      run:
+        working-directory: packages/docmosis-tools
     steps:
       - uses: actions/checkout@v7
         with:
@@ -87,7 +90,7 @@ jobs:
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add package.json
+          git add package.json ../../package-lock.json
           UNRECORDED="published npm-v${VERSION} but could not record the bump on ${GITHUB_REF_NAME}. Set version to ${VERSION} in package.json by hand, or the next release will retry a version the feed already has."
           # A version master already records needs no commit, and `git commit` on a clean tree
           # exits non-zero.

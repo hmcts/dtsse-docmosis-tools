@@ -12,6 +12,9 @@ jobs:
   cli:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: packages/docmosis-tools
     strategy:
       fail-fast: false
       matrix:
@@ -29,22 +32,22 @@ jobs:
   extension:
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    defaults:
-      run:
-        working-directory: vscode
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: npm
-          cache-dependency-path: vscode/package-lock.json
+          cache-dependency-path: package-lock.json
       - run: npm ci
       - run: npm run build
+        working-directory: extensions/template-preview
       - run: npm test
+        working-directory: extensions/template-preview
       - run: npm run package
+        working-directory: extensions/template-preview
       - uses: actions/upload-artifact@v7
         with:
           name: hmcts-template-preview
-          path: vscode/hmcts-template-preview.vsix
+          path: extensions/template-preview/hmcts-template-preview.vsix
           if-no-files-found: error
