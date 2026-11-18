@@ -1,0 +1,11 @@
+**
+!dist/extension.js
+!dist/webview.css
+!dist/notify.css
+!dist/notify-picker.js
+!dist/notify-editor.js
+!media/icon.png
+!media/notify.svg
+!package.json
+!README.md
+!LICENSE

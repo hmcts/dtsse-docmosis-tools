@@ -9,7 +9,7 @@ permissions:
   contents: read
 
 jobs:
-  cli:
+  docmosis-tools:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     defaults:
@@ -29,9 +29,35 @@ jobs:
       - run: node --test test/*.test.mjs
       - run: npm pack --dry-run
 
+  notify-tools:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: packages/notify-tools
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: [24, 26]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ matrix.node-version }}
+      - run: node --test test/*.test.mjs
+      - run: npm pack --dry-run
+
   extension:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - directory: extensions/template-preview
+            vsix: hmcts-template-preview
+          - directory: extensions/notify
+            vsix: hmcts-notify
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -41,13 +67,13 @@ jobs:
           cache-dependency-path: package-lock.json
       - run: npm ci --ignore-scripts
       - run: npm run build
-        working-directory: extensions/template-preview
+        working-directory: ${{ matrix.directory }}
       - run: npm test
-        working-directory: extensions/template-preview
+        working-directory: ${{ matrix.directory }}
       - run: npm run package
-        working-directory: extensions/template-preview
+        working-directory: ${{ matrix.directory }}
       - uses: actions/upload-artifact@v7
         with:
-          name: hmcts-template-preview
-          path: extensions/template-preview/hmcts-template-preview.vsix
+          name: ${{ matrix.vsix }}
+          path: ${{ matrix.directory }}/${{ matrix.vsix }}.vsix
           if-no-files-found: error

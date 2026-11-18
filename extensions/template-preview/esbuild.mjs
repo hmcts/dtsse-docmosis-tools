@@ -30,17 +30,6 @@ const configs = [
     format: 'iife',
     target: 'es2022',
   },
-  ...[
-    ['src/notify/webview/picker.ts', 'dist/notify-picker.js'],
-    ['src/notify/webview/editor.ts', 'dist/notify-editor.js'],
-  ].map(([entry, outfile]) => ({
-    ...common,
-    entryPoints: [entry],
-    outfile,
-    platform: 'browser',
-    format: 'iife',
-    target: 'es2022',
-  })),
   {
     ...common,
     entryPoints: ['test/integration/index.ts'],
@@ -55,7 +44,6 @@ const configs = [
 await mkdir('dist', { recursive: true });
 await copyFile(join(pdfjsDir, 'build/pdf.worker.min.mjs'), 'dist/pdf.worker.min.mjs');
 await copyFile('media/webview.css', 'dist/webview.css');
-await copyFile('media/notify.css', 'dist/notify.css');
 await mkdir('dist/cli', { recursive: true });
 await copyFile('cli/docmosis', 'dist/cli/docmosis');
 await copyFile('cli/docmosis.cmd', 'dist/cli/docmosis.cmd');

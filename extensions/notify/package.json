@@ -1,0 +1,158 @@
+{
+  "name": "hmcts-notify",
+  "displayName": "GOV.UK Notify Templates",
+  "description": "Browse, preview and draft changes to GOV.UK Notify templates, with the personalisation Notify's own preview needs.",
+  "version": "0.1.0",
+  "publisher": "hmcts",
+  "private": true,
+  "license": "MIT",
+  "icon": "media/icon.png",
+  "galleryBanner": {
+    "color": "#1d70b8",
+    "theme": "dark"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/hmcts/dtsse-ide-tooling.git",
+    "directory": "extensions/notify"
+  },
+  "homepage": "https://github.com/hmcts/dtsse-ide-tooling/tree/master/extensions/notify#readme",
+  "bugs": {
+    "url": "https://github.com/hmcts/dtsse-ide-tooling/issues"
+  },
+  "categories": [
+    "Other"
+  ],
+  "keywords": [
+    "hmcts",
+    "gov.uk notify",
+    "notify",
+    "template",
+    "email",
+    "sms",
+    "letter"
+  ],
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "main": "./dist/extension.js",
+  "activationEvents": [],
+  "contributes": {
+    "configuration": {
+      "title": "GOV.UK Notify Templates",
+      "properties": {
+        "hmctsNotify.products": {
+          "type": "array",
+          "default": [],
+          "markdownDescription": "GOV.UK Notify products to add to the built-in list, or to replace a built-in entry with the same `id`. Each entry names the AAT Key Vault and secret holding the product's Notify API key, which is read with your own `az login`. While this is unset, `hmctsTemplatePreview.notify.products` from the HMCTS Template Preview extension is used.",
+          "items": {
+            "type": "object",
+            "required": [
+              "id",
+              "vault",
+              "secret"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9-]*$",
+                "description": "A unique id; matching a built-in id replaces that entry."
+              },
+              "label": {
+                "type": "string",
+                "description": "The name shown in the product dropdown."
+              },
+              "vault": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9-]*$",
+                "description": "The Key Vault name, such as sptribs-aat."
+              },
+              "secret": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9-]*$",
+                "description": "The secret holding the Notify API key."
+              },
+              "note": {
+                "type": "string",
+                "description": "Shown under the product dropdown."
+              }
+            }
+          }
+        }
+      }
+    },
+    "commands": [
+      {
+        "command": "hmctsNotify.refresh",
+        "title": "Refresh Notify templates",
+        "category": "GOV.UK Notify Templates",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "hmctsNotify.forgetKey",
+        "title": "Forget GOV.UK Notify API keys",
+        "category": "GOV.UK Notify Templates"
+      },
+      {
+        "command": "hmctsNotify.openTemplate",
+        "title": "Open GOV.UK Notify template",
+        "category": "GOV.UK Notify Templates"
+      }
+    ],
+    "menus": {
+      "commandPalette": [
+        {
+          "command": "hmctsNotify.openTemplate",
+          "when": "false"
+        }
+      ],
+      "view/title": [
+        {
+          "command": "hmctsNotify.refresh",
+          "when": "view == hmctsNotify.templates",
+          "group": "navigation"
+        }
+      ]
+    },
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "hmctsNotifyTemplates",
+          "title": "GOV.UK Notify",
+          "icon": "media/notify.svg"
+        }
+      ]
+    },
+    "views": {
+      "hmctsNotifyTemplates": [
+        {
+          "type": "webview",
+          "id": "hmctsNotify.templates",
+          "name": "Templates"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "npm run typecheck && node esbuild.mjs",
+    "watch": "node esbuild.mjs --watch",
+    "test": "vitest run",
+    "test:integration": "npm run build && xvfb-run -a node test/integration/runTest.mjs",
+    "package": "npm run build && vsce package --no-dependencies --out hmcts-notify.vsix && node scripts/check-vsix.mjs",
+    "vscode:prepublish": "npm run build"
+  },
+  "devDependencies": {
+    "@types/node": "^26.0.0",
+    "@types/vscode": "~1.90.0",
+    "@vscode/test-electron": "^3.0.0",
+    "@vscode/vsce": "4.1.1",
+    "esbuild": "^0.28.0",
+    "ovsx": "1.4.0",
+    "typescript": "^7.0.0",
+    "vitest": "^5.0.0"
+  },
+  "dependencies": {
+    "@hmcts-cft/notify-tools": "*"
+  }
+}

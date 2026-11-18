@@ -118,7 +118,10 @@ export const workspace = {
     return [{ uri: Uri.file(stub.workspaceRoot) }];
   },
   getWorkspaceFolder: () => ({ uri: Uri.file(stub.workspaceRoot) }),
-  getConfiguration: () => ({ get: <T>(key: string, fallback: T): T => (stub.settings[key] as T) ?? fallback }),
+  getConfiguration: () => ({
+    get: <T>(key: string, fallback: T): T => (stub.settings[key] as T) ?? fallback,
+    inspect: () => undefined,
+  }),
   onDidChangeConfiguration: (listener: (typeof stub.configListeners)[number]) => {
     stub.configListeners.push(listener);
     return disposable;
@@ -126,6 +129,8 @@ export const workspace = {
   createFileSystemWatcher: () => ({ ...disposable, onDidChange: () => disposable, onDidCreate: () => disposable }),
   registerTextDocumentContentProvider: () => disposable,
 };
+
+export const extensions = { getExtension: () => undefined };
 
 export const env = {
   clipboard: {

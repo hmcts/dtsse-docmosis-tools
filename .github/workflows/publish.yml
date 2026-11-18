@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Release tag whose hmcts-template-preview.vsix to publish, such as vscode-v0.1.42
+        description: Release tag to publish, such as vscode-v0.1.42 (HMCTS Template Preview) or notify-vscode-v0.1.42 (GOV.UK Notify Templates)
         required: true
         type: string
   # Releases made with GITHUB_TOKEN trigger no workflows, so release.yml dispatches this one;
@@ -34,18 +34,34 @@ jobs:
           node-version: 24
           cache: npm
           cache-dependency-path: package-lock.json
+      - name: Find the extension for the tag
+        run: |
+          case "$TAG" in
+            notify-vscode-v*)
+              echo "EXTENSION_DIR=extensions/notify" >> "$GITHUB_ENV"
+              echo "VSIX=hmcts-notify.vsix" >> "$GITHUB_ENV"
+              ;;
+            vscode-v*)
+              echo "EXTENSION_DIR=extensions/template-preview" >> "$GITHUB_ENV"
+              echo "VSIX=hmcts-template-preview.vsix" >> "$GITHUB_ENV"
+              ;;
+            *)
+              echo "::error::Unknown tag '${TAG}': expected vscode-v<version> (HMCTS Template Preview) or notify-vscode-v<version> (GOV.UK Notify Templates)."
+              exit 1
+              ;;
+          esac
       # The publishing tools come from the lockfile, without install scripts, so nothing unpinned runs with the OIDC token.
       - name: Install the publishing tools
         run: npm ci --ignore-scripts
       - name: Download the release's extension package
-        run: gh release download "$TAG" --repo "$GITHUB_REPOSITORY" -p hmcts-template-preview.vsix --dir extensions/template-preview
+        run: gh release download "$TAG" --repo "$GITHUB_REPOSITORY" -p "$VSIX" --dir "$EXTENSION_DIR"
       - name: Visual Studio Marketplace
-        working-directory: extensions/template-preview
-        run: npx --no-install vsce publish --oidc --packagePath hmcts-template-preview.vsix --skip-duplicate
+        working-directory: ${{ env.EXTENSION_DIR }}
+        run: npx --no-install vsce publish --oidc --packagePath "$VSIX" --skip-duplicate
       - name: Open VSX (skipped, no credential)
         if: env.OVSX_PAT == ''
         run: echo "Skipping Open VSX, because secrets.OVSX_PAT is not set."
       - name: Open VSX
         if: env.OVSX_PAT != ''
-        working-directory: extensions/template-preview
-        run: npx --no-install ovsx publish hmcts-template-preview.vsix -p "$OVSX_PAT" --skip-duplicate
+        working-directory: ${{ env.EXTENSION_DIR }}
+        run: npx --no-install ovsx publish "$VSIX" -p "$OVSX_PAT" --skip-duplicate

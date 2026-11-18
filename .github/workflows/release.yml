@@ -9,21 +9,64 @@ on:
       - packages/docmosis-tools/index.mjs
       - packages/docmosis-tools/index.d.ts
       - packages/docmosis-tools/package.json
+      - packages/notify-tools/lib/**
+      - packages/notify-tools/package.json
       - extensions/template-preview/**
+      - extensions/notify/**
       - package.json
       - package-lock.json
 
 permissions:
-  contents: write
-  actions: write
+  contents: read
 
 concurrency:
   group: release
   cancel-in-progress: false
 
 jobs:
-  release:
+  changes:
     runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.detect.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      # An extension is released when its own files, the package it bundles, or the root manifest
+      # and lockfile change. A push whose base commit is unknown releases both.
+      - name: Find the extensions to release
+        id: detect
+        env:
+          BEFORE: ${{ github.event.before }}
+        run: |
+          touched() {
+            [ "$all" = true ] || ! git diff --quiet "$BEFORE" "$GITHUB_SHA" -- "$@"
+          }
+          all=false
+          if ! git cat-file -e "${BEFORE}^{commit}" 2>/dev/null; then all=true; fi
+          matrix=()
+          if touched extensions/template-preview packages/docmosis-tools/bin packages/docmosis-tools/lib packages/docmosis-tools/index.mjs packages/docmosis-tools/index.d.ts packages/docmosis-tools/package.json package.json package-lock.json; then
+            matrix+=('{"name":"HMCTS Template Preview","directory":"extensions/template-preview","package":"packages/docmosis-tools","vsix":"hmcts-template-preview","tag_prefix":"vscode-v","latest":true}')
+          fi
+          if touched extensions/notify packages/notify-tools/lib packages/notify-tools/package.json package.json package-lock.json; then
+            matrix+=('{"name":"GOV.UK Notify Templates","directory":"extensions/notify","package":"packages/notify-tools","vsix":"hmcts-notify","tag_prefix":"notify-vscode-v","latest":false}')
+          fi
+          json="[$(IFS=,; echo "${matrix[*]}")]"
+          echo "releasing: ${json}"
+          echo "matrix=${json}" >> "$GITHUB_OUTPUT"
+
+  release:
+    needs: changes
+    permissions:
+      contents: write
+      actions: write
+    if: needs.changes.outputs.matrix != '[]'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        include: ${{ fromJSON(needs.changes.outputs.matrix) }}
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -32,33 +75,39 @@ jobs:
           cache: npm
           cache-dependency-path: package-lock.json
       - run: npm ci --ignore-scripts
-      - run: npm test --workspace packages/docmosis-tools
+      - run: npm test --workspace ${{ matrix.package }}
       - name: Set the extension version
         id: version
-        working-directory: extensions/template-preview
+        working-directory: ${{ matrix.directory }}
         run: |
           # The Marketplace rejects a version it already has; the run number only increases.
           version="0.1.${GITHUB_RUN_NUMBER}"
           npm pkg set "version=${version}"
           echo "version=${version}" >> "$GITHUB_OUTPUT"
       - name: Build the extension
-        working-directory: extensions/template-preview
+        working-directory: ${{ matrix.directory }}
         run: |
           npm test
           npm run package
+      # The README, the devcontainer installer and the release page's "latest" link all want the
+      # HMCTS Template Preview release, so the Notify one never takes the flag.
       - name: Publish the release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VERSION: ${{ steps.version.outputs.version }}
+          NAME: ${{ matrix.name }}
+          TAG: ${{ matrix.tag_prefix }}${{ steps.version.outputs.version }}
+          ASSET: ${{ matrix.directory }}/${{ matrix.vsix }}.vsix
+          LATEST: ${{ matrix.latest }}
         run: |
-          gh release create "vscode-v${VERSION}" extensions/template-preview/hmcts-template-preview.vsix \
+          gh release create "$TAG" "$ASSET" \
             --target "$GITHUB_SHA" \
-            --title "vscode-v${VERSION}" \
-            --notes "HMCTS Template Preview ${VERSION}, built from ${GITHUB_SHA}." \
-            --latest
+            --title "$TAG" \
+            --notes "${NAME} ${VERSION}, built from ${GITHUB_SHA}." \
+            --latest="$LATEST"
       - name: Publish to the Marketplace and Open VSX
         env:
           GH_TOKEN: ${{ github.token }}
-          VERSION: ${{ steps.version.outputs.version }}
+          TAG: ${{ matrix.tag_prefix }}${{ steps.version.outputs.version }}
           BRANCH: ${{ github.event.repository.default_branch }}
-        run: gh workflow run publish.yml -f "tag=vscode-v${VERSION}" --ref "$BRANCH"
+        run: gh workflow run publish.yml -f "tag=${TAG}" --ref "$BRANCH"
