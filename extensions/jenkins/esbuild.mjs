@@ -7,7 +7,7 @@ const config = {
   sourcemap: true,
   logLevel: 'info',
   entryPoints: ['src/extension.ts'],
-  outfile: 'dist/extension.js',
+  outfile: 'dist/extension.cjs',
   platform: 'node',
   format: 'cjs',
   target: 'node20',

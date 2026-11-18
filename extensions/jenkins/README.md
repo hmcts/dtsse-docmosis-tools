@@ -63,7 +63,7 @@ npm ci
 npm run lint
 npm run typecheck
 npm test          # vitest; 100% coverage required on src/core
-npm run package   # builds dist/extension.js and dtsse-jenkins-vscode.vsix
+npm run package   # builds dist/extension.cjs and dtsse-jenkins-vscode.vsix
 ```
 
 Logic lives in `src/core` (pure, no `vscode` import); `src/adapters` and `src/extension.ts` are thin VS Code wiring and are excluded from coverage.

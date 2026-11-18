@@ -23,7 +23,7 @@
   "engines": {
     "vscode": "^1.90.0"
   },
-  "main": "./dist/extension.js",
+  "main": "./dist/extension.cjs",
   "activationEvents": [
     "workspaceContains:workspace.yaml",
     "onStartupFinished"
@@ -227,7 +227,7 @@
     "build": "npm run typecheck && node esbuild.mjs",
     "watch": "node esbuild.mjs --watch",
     "test": "vitest run --coverage",
-    "package": "npm run build && vsce package --no-dependencies --out dtsse-jenkins-vscode.vsix && node scripts/check-vsix.mjs",
+    "package": "npm run build && node scripts/check-bundle.mjs && vsce package --no-dependencies --out dtsse-jenkins-vscode.vsix && node scripts/check-vsix.mjs",
     "vscode:prepublish": "npm run build"
   },
   "devDependencies": {
