@@ -1,6 +1,10 @@
-import { NotifyClient, type NotifyTemplate } from './client';
-import { KeyStore } from './keyVault';
-import { configuredProducts, type NotifyProduct } from './products';
+import { mergeProducts, type NotifyProduct, type NotifyTemplate } from '@hmcts-cft/docmosis-tools/notify';
+import { KeyStore, NotifyClient } from '@hmcts-cft/docmosis-tools/notify/node';
+import * as vscode from 'vscode';
+
+/** The built-in products with the `hmctsTemplatePreview.notify.products` setting's entries merged in. */
+export const configuredProducts = (): NotifyProduct[] =>
+  mergeProducts(vscode.workspace.getConfiguration('hmctsTemplatePreview').get<unknown>('notify.products', []));
 
 const listId = (product: NotifyProduct) => `${product.vault}/${product.secret}`;
 

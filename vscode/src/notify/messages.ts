@@ -1,5 +1,5 @@
+import type { TemplateType } from '@hmcts-cft/docmosis-tools/notify';
 import type { JsonObject } from '../data';
-import type { TemplateType } from './client';
 
 export interface ProductOption {
   id: string;

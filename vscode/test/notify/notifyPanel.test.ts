@@ -1,9 +1,9 @@
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { KeyStore } from '@hmcts-cft/docmosis-tools/notify/node';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type * as vscodeTypes from 'vscode';
-import { KeyStore } from '../../src/notify/keyVault';
 import { NotifyPanels } from '../../src/notify/panel';
 import { NotifyService } from '../../src/notify/service';
 import { NotifySidebar } from '../../src/notify/sidebar';
