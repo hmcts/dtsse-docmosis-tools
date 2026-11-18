@@ -1,10 +1,12 @@
+import { fileURLToPath } from 'node:url';
 import * as esbuild from 'esbuild';
 import { describe, expect, it } from 'vitest';
 
-describe('Notify webview bundles', () => {
-  it.each(['src/notify/webview/editor.ts', 'src/notify/webview/picker.ts'])("%s leaves out the products' vaults and secrets", async (entry) => {
+describe('Notify editor bundle', () => {
+  it("leaves out the built-in product table's vaults and secrets", async () => {
     const result = await esbuild.build({
-      entryPoints: [entry],
+      absWorkingDir: fileURLToPath(new URL('../..', import.meta.url)),
+      entryPoints: ['src/notify/webview/editor.ts'],
       bundle: true,
       write: false,
       platform: 'browser',

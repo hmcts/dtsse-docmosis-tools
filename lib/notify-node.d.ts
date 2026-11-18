@@ -25,7 +25,7 @@ export function notifyApiOverride(): string | undefined;
 export function notifyApiUrl(): string;
 
 export interface ClientOptions {
-    /** Trailing slashes are dropped. Defaults to notifyApiUrl() when the client is made. */
+    /** Trailing slashes are dropped. Defaults to notifyApiUrl() when the client is made, also when empty or only slashes. */
     baseUrl?: string;
     fetchImpl?: typeof fetch;
 }
@@ -42,7 +42,9 @@ export class NotifyClient {
 }
 
 /** A failure to read a secret, with a message to show a person. */
-export class KeyVaultError extends Error {}
+export class KeyVaultError extends Error {
+    constructor(message: string);
+}
 
 /** The part of node:child_process execFile that readSecret calls. */
 export type ExecFileLike = (

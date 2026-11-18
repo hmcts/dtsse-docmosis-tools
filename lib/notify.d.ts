@@ -1,7 +1,6 @@
-import type { ObjectSchema } from './schema.js';
+import type { Json, JsonObject, ObjectSchema } from './schema.js';
 
-export type Json = string | number | boolean | null | Json[] | { [key: string]: Json };
-export type JsonObject = { [key: string]: Json };
+export type { Json, JsonObject };
 
 export const NOTIFY_API_URL: string;
 export const NOTIFY_ADMIN_URL: string;
@@ -54,7 +53,7 @@ export const SAFE_NAME: RegExp;
  * BUILT_IN_PRODUCTS with `entries` added, or replacing a built-in entry with the same id, sorted by label.
  * An entry needs `id`, `vault` and `secret` matching SAFE_NAME, or it is dropped; `label` defaults to `id`.
  */
-export function mergeProducts(entries: unknown): NotifyProduct[];
+export function mergeProducts(entries: unknown): Readonly<NotifyProduct>[];
 
 export interface Placeholder {
     /** The name as first written in the template. */
@@ -83,7 +82,7 @@ export function isYes(value: Json | undefined): boolean;
 /** Objects and arrays as JSON, anything else as String() writes it. */
 export function asText(value: Json): string;
 /** undefined, null, '' or an empty array. */
-export function isBlank(value: Json | undefined): boolean;
+export function isBlank(value: Json | undefined): value is undefined | null | '' | [];
 /** The values a personalisation form shows, keyed by placeholder name: text as a string, conditionals as booleans. */
 export function formValues(placeholders: Placeholder[], data: JsonObject): JsonObject;
 /** The personalisation for Notify's preview, with each empty placeholder sent as `((name))` and listed in `missing`. */

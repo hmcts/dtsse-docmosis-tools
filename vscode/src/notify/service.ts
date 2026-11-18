@@ -3,10 +3,10 @@ import { KeyStore, NotifyClient } from '@hmcts-cft/docmosis-tools/notify/node';
 import * as vscode from 'vscode';
 
 /** The built-in products with the `hmctsTemplatePreview.notify.products` setting's entries merged in. */
-export const configuredProducts = (): NotifyProduct[] =>
+export const configuredProducts = (): Readonly<NotifyProduct>[] =>
   mergeProducts(vscode.workspace.getConfiguration('hmctsTemplatePreview').get<unknown>('notify.products', []));
 
-const listId = (product: NotifyProduct) => `${product.vault}/${product.secret}`;
+const listId = (product: Readonly<NotifyProduct>) => `${product.vault}/${product.secret}`;
 
 /**
  * Shared by the side view and the editor panels: one key read and one template list per product.
@@ -21,19 +21,19 @@ export class NotifyService {
     private readonly createClient: (key: string) => NotifyClient = (key) => new NotifyClient(key),
   ) {}
 
-  products(): NotifyProduct[] {
+  products(): Readonly<NotifyProduct>[] {
     return configuredProducts();
   }
 
-  product(id: string): NotifyProduct | undefined {
+  product(id: string): Readonly<NotifyProduct> | undefined {
     return this.products().find((p) => p.id === id);
   }
 
-  async client(product: NotifyProduct): Promise<NotifyClient> {
+  async client(product: Readonly<NotifyProduct>): Promise<NotifyClient> {
     return this.createClient(await this.keys.get(product.vault, product.secret));
   }
 
-  templates(product: NotifyProduct, refresh = false): Promise<NotifyTemplate[]> {
+  templates(product: Readonly<NotifyProduct>, refresh = false): Promise<NotifyTemplate[]> {
     const id = listId(product);
     let list = refresh ? undefined : this.templateLists.get(id);
     if (!list) {
@@ -53,7 +53,7 @@ export class NotifyService {
   }
 
   /** The template from a list already loaded, without waiting for one. */
-  loadedTemplate(product: NotifyProduct, templateId: string): NotifyTemplate | undefined {
+  loadedTemplate(product: Readonly<NotifyProduct>, templateId: string): NotifyTemplate | undefined {
     return this.loadedLists.get(listId(product))?.find((t) => t.id === templateId);
   }
 

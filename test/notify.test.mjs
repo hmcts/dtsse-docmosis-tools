@@ -20,7 +20,6 @@ import {
     smsCount,
     templateAdminUrl,
 } from '../lib/notify.mjs';
-import * as notify from '../lib/notify.mjs';
 
 const SERVICE = '26785a09-ab16-4eb0-8407-a37497a57506';
 
@@ -258,8 +257,15 @@ describe('renderLocal', () => {
     });
 });
 
-describe('exports', () => {
-    test("doesn't share the stateful placeholder regex", () => {
-        assert.equal('PLACEHOLDER' in notify, false);
+describe('repeated calls', () => {
+    test('give the same result for the same text', () => {
+        const text = 'Dear ((name)), ((paid??Thank you.)) Ref ((ref))';
+        const data = { name: 'Ann', paid: 'yes', ref: '123' };
+        assert.deepEqual(findPlaceholders(text), findPlaceholders(text));
+        assert.equal(findPlaceholders(text).length, 3);
+        assert.equal(fill(text, data, 'inline'), fill(text, data, 'inline'));
+        assert.equal(fill(text, data, 'inline'), 'Dear Ann, Thank you. Ref 123');
+        assert.deepEqual(renderLocal('email', text, text, data), renderLocal('email', text, text, data));
+        assert.deepEqual(renderLocal('sms', null, text, data), renderLocal('sms', null, text, data));
     });
 });

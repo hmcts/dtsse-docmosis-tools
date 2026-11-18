@@ -1,4 +1,4 @@
-import type { Json, JsonObject } from '@hmcts-cft/docmosis-tools/notify';
+import type { Json, JsonObject } from '@hmcts-cft/docmosis-tools/schema';
 
 export type { Json, JsonObject };
 

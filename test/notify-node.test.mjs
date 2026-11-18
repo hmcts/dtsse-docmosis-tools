@@ -86,6 +86,14 @@ describe('NotifyClient', () => {
         assert.equal(calls[0].url, 'https://notify.test/v2/templates');
     });
 
+    test('uses the public API when baseUrl is empty or only slashes', async () => {
+        for (const baseUrl of ['', '/']) {
+            const { calls, impl } = fakeFetch(200, { templates: [] });
+            await new NotifyClient(KEY, { baseUrl, fetchImpl: impl }).listTemplates();
+            assert.equal(calls[0].url, 'https://api.notifications.service.gov.uk/v2/templates', `baseUrl ${JSON.stringify(baseUrl)}`);
+        }
+    });
+
     test('reads one template and previews it with personalisation', async () => {
         const { calls, impl } = fakeFetch(200, { id: 't 1', type: 'sms', version: 2, body: 'Hi Ann' });
         const client = new NotifyClient(KEY, { baseUrl: 'https://notify.test', fetchImpl: impl });
