@@ -1,13 +1,14 @@
 import * as vscode from 'vscode';
 import { formatDuration, relativeTime } from '../core/format';
-import type { BuildSummary, JobSummary, Stage } from '../core/jenkinsClient';
+import type { BuildSummary, JenkinsViewJob, JobSummary, Stage } from '../core/jenkinsClient';
 import { decodeJobName, prNumberOf, repoJobUrl } from '../core/jenkinsPaths';
 import { classifyJobs, masterJobsFromView } from '../core/jobTree';
-import { matchView } from '../core/products';
 import { iconFor, statusFromBuild, statusFromColor, statusFromStage, statusWord } from '../core/status';
+import type { Team } from '../core/teams';
+import { buildTeams } from '../core/teams';
 import type { RepoEntry } from '../core/workspaceYaml';
 import type { JenkinsService } from './jenkinsService';
-import type { ProductSelector } from './productSelector';
+import type { CftWorkspace } from './workspace';
 
 export interface BuildTarget {
   repo: RepoEntry;
@@ -17,6 +18,7 @@ export interface BuildTarget {
 }
 
 type Node =
+  | { kind: 'team'; team: Team }
   | { kind: 'repo'; repo: RepoEntry; masterStatus?: ReturnType<typeof statusFromColor> }
   | { kind: 'group'; label: string; repo: RepoEntry; jobs: Array<{ job: JobSummary; pr?: number }> }
   | { kind: 'job'; label: string; repo: RepoEntry; job: JobSummary; pr?: number }
@@ -37,6 +39,7 @@ function themeIcon(status: ReturnType<typeof statusFromBuild>): vscode.ThemeIcon
 
 export function infoOf(node: unknown): NodeInfo {
   const n = node as Node | undefined;
+  if (n?.kind === 'team') return n.team.view ? { url: n.team.view.url } : {};
   if (n?.kind === 'job') {
     return { url: n.job.url, ...(n.pr !== undefined ? { prUrl: prUrl(n.repo, n.pr) } : {}) };
   }
@@ -64,7 +67,7 @@ export class PipelineTree implements vscode.TreeDataProvider<Node>, vscode.Dispo
 
   constructor(
     private readonly jenkins: JenkinsService,
-    private readonly products: ProductSelector,
+    private readonly workspace: CftWorkspace,
   ) {}
 
   setVisible(visible: boolean): void {
@@ -97,6 +100,8 @@ export class PipelineTree implements vscode.TreeDataProvider<Node>, vscode.Dispo
   private async children(node?: Node): Promise<Node[]> {
     if (!node) return this.roots();
     switch (node.kind) {
+      case 'team':
+        return node.team.repos.map((repo) => this.repoNode(node.team.view?.jobs ?? [], repo));
       case 'repo':
         return this.repoChildren(node.repo);
       case 'group':
@@ -117,31 +122,25 @@ export class PipelineTree implements vscode.TreeDataProvider<Node>, vscode.Dispo
   }
 
   private async roots(): Promise<Node[]> {
-    const repos = this.products.reposOfCurrent();
-    if (repos.length === 0) return [];
     const client = await this.jenkins.client();
     if (!client) return [];
-
-    const views = await this.jenkins.viewList();
     const config = vscode.workspace.getConfiguration('dtsseJenkins');
-    const view = matchView(
-      this.products.current() ?? '',
-      views,
-      config.get<Record<string, string>>('productViews'),
-    );
-    let viewJobs: Awaited<ReturnType<typeof client.viewJobs>> = [];
-    if (view) {
-      try {
-        viewJobs = await client.viewJobs(view.name);
-      } catch (error) {
-        this.jenkins.handleError(error);
-      }
+    let views: Awaited<ReturnType<typeof client.listViewsWithJobs>>;
+    try {
+      views = await client.listViewsWithJobs();
+    } catch (error) {
+      this.jenkins.handleError(error);
+      return [];
     }
     this.jenkins.markReady();
-    return repos.map((repo) => {
-      const main = masterJobsFromView(viewJobs, repo.name).main;
-      return { kind: 'repo' as const, repo, ...(main ? { masterStatus: statusFromColor(main.color) } : {}) };
-    });
+    return buildTeams(this.workspace.repos, views, config.get<Record<string, string>>('productViews')).map(
+      (team) => ({ kind: 'team' as const, team }),
+    );
+  }
+
+  private repoNode(viewJobs: JenkinsViewJob[], repo: RepoEntry): Node {
+    const main = masterJobsFromView(viewJobs, repo.name).main;
+    return { kind: 'repo', repo, ...(main ? { masterStatus: statusFromColor(main.color) } : {}) };
   }
 
   private async repoChildren(repo: RepoEntry): Promise<Node[]> {
@@ -208,6 +207,15 @@ export class PipelineTree implements vscode.TreeDataProvider<Node>, vscode.Dispo
     switch (node.kind) {
       case 'message':
         return new vscode.TreeItem(node.text);
+      case 'team': {
+        const { team } = node;
+        const item = new vscode.TreeItem(team.label, vscode.TreeItemCollapsibleState.Collapsed);
+        item.iconPath = themeIcon(team.status);
+        item.description = `${team.repos.length} ${team.repos.length === 1 ? 'repo' : 'repos'}`;
+        item.tooltip = [team.product, team.view?.url ?? 'No Jenkins view'].join('\n');
+        item.contextValue = team.view ? 'teamWithView' : 'team';
+        return item;
+      }
       case 'repo': {
         const item = new vscode.TreeItem(node.repo.name, vscode.TreeItemCollapsibleState.Collapsed);
         item.iconPath = node.masterStatus ? themeIcon(node.masterStatus) : new vscode.ThemeIcon('repo');

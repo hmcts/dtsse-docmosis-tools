@@ -44,6 +44,12 @@ export interface JenkinsViewJob {
   color?: string;
 }
 
+export interface JenkinsViewWithJobs {
+  name: string;
+  url: string;
+  jobs: JenkinsViewJob[];
+}
+
 export interface BuildRevision {
   commit?: string;
   branch?: string;
@@ -112,18 +118,11 @@ export class JenkinsClient {
     return `${url.replace(/\/+$/, '')}/`;
   }
 
-  async listViews(): Promise<Array<{ name: string; url: string }>> {
-    const data = await this.json<{ views?: Array<{ name: string; url: string }> }>(
-      `${this.base}/api/json?tree=views[name,url]`,
-    );
-    return data.views ?? [];
-  }
-
-  async viewJobs(viewName: string): Promise<JenkinsViewJob[]> {
-    const data = await this.json<{ jobs?: JenkinsViewJob[] }>(
-      `${this.base}/view/${encodeURIComponent(viewName)}/api/json?tree=jobs[name,url,color]`,
-    );
-    return data.jobs ?? [];
+  async listViewsWithJobs(): Promise<JenkinsViewWithJobs[]> {
+    const data = await this.json<{
+      views?: Array<Omit<JenkinsViewWithJobs, 'jobs'> & { jobs?: JenkinsViewJob[] }>;
+    }>(`${this.base}/api/json?tree=views[name,url,jobs[name,url,color]]`);
+    return (data.views ?? []).map((view) => ({ ...view, jobs: view.jobs ?? [] }));
   }
 
   async listJobs(folderUrl: string): Promise<JobSummary[]> {

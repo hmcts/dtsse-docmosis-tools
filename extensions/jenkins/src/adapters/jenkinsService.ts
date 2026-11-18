@@ -12,7 +12,6 @@ export class JenkinsService implements vscode.Disposable {
   baseUrl = '';
   private cached: JenkinsClient | undefined;
   private warnedAuth = false;
-  private views: { at: number; value: Array<{ name: string; url: string }> } | undefined;
 
   constructor(
     private readonly workspace: CftWorkspace,
@@ -21,7 +20,6 @@ export class JenkinsService implements vscode.Disposable {
 
   invalidate(): void {
     this.cached = undefined;
-    this.views = undefined;
     this.warnedAuth = false;
   }
 
@@ -67,20 +65,6 @@ export class JenkinsService implements vscode.Disposable {
       this.markReady();
     }
     return stored;
-  }
-
-  async viewList(): Promise<Array<{ name: string; url: string }>> {
-    if (this.views && Date.now() - this.views.at < 10 * 60_000) return this.views.value;
-    const client = await this.client();
-    if (!client) return [];
-    try {
-      const value = await client.listViews();
-      this.views = { at: Date.now(), value };
-      return value;
-    } catch (error) {
-      this.handleError(error);
-      return [];
-    }
   }
 
   private setState(state: ServiceState): void {

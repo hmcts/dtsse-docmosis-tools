@@ -18,7 +18,7 @@ for (let i = 0; i < entries; i++) {
   offset += 46 + nameLength + extraLength + commentLength;
 }
 
-const required = ['extension/dist/extension.cjs', 'extension/media/jenkins.svg'];
+const required = ['extension/dist/extension.cjs', 'extension/media/jenkins.svg', 'extension/media/icon.png'];
 const absent = required.filter((name) => !names.has(name));
 if (absent.length > 0) {
   console.error(`${file.pathname} is missing ${absent.join(', ')}`);

@@ -2,7 +2,6 @@ import * as vscode from 'vscode';
 import { investigate } from './adapters/investigate';
 import { JenkinsService } from './adapters/jenkinsService';
 import { githubToken, PrAlerts } from './adapters/prAlerts';
-import { ProductSelector } from './adapters/productSelector';
 import { RepoStatusBar } from './adapters/repoStatusBar';
 import { infoOf, PipelineTree } from './adapters/tree';
 import { CftWorkspace } from './adapters/workspace';
@@ -10,8 +9,7 @@ import { CftWorkspace } from './adapters/workspace';
 export function activate(context: vscode.ExtensionContext): void {
   const workspace = new CftWorkspace();
   const jenkins = new JenkinsService(workspace, context.secrets);
-  const products = new ProductSelector(workspace, jenkins, context.workspaceState);
-  const tree = new PipelineTree(jenkins, products);
+  const tree = new PipelineTree(jenkins, workspace);
   const statusBar = new RepoStatusBar(workspace, jenkins);
   const alerts = new PrAlerts(context, workspace, jenkins);
 
@@ -20,10 +18,8 @@ export function activate(context: vscode.ExtensionContext): void {
   const updateContext = () => {
     let state = 'ready';
     if (!workspace.root) state = 'noWorkspace';
-    else if (!products.current()) state = 'noProduct';
     else if (jenkins.state !== 'ready') state = jenkins.state;
     void vscode.commands.executeCommand('setContext', 'dtsseJenkins.state', state);
-    products.render();
   };
 
   const refreshAll = () => {
@@ -38,16 +34,11 @@ export function activate(context: vscode.ExtensionContext): void {
   context.subscriptions.push(
     workspace,
     jenkins,
-    products,
     tree,
     statusBar,
     view,
     { dispose: () => void alerts.dispose() },
     view.onDidChangeVisibility((event) => tree.setVisible(event.visible)),
-    products.onDidChange(() => {
-      updateContext();
-      tree.refresh();
-    }),
     jenkins.onDidChangeState(updateContext),
     workspace.onDidChange(() => {
       updateContext();
@@ -58,11 +49,9 @@ export function activate(context: vscode.ExtensionContext): void {
       if (event.affectsConfiguration('dtsseJenkins')) {
         tree.schedule();
         statusBar.schedule();
-        products.render();
         tree.refresh();
       }
     }),
-    vscode.commands.registerCommand('dtsseJenkins.selectProduct', () => products.select()),
     vscode.commands.registerCommand('dtsseJenkins.refresh', refreshAll),
     vscode.commands.registerCommand('dtsseJenkins.setCredentials', async () => {
       if (await jenkins.setCredentials()) refreshAll();
@@ -97,7 +86,6 @@ export function activate(context: vscode.ExtensionContext): void {
   statusBar.schedule();
   updateContext();
   void statusBar.update();
-  void products.suggestFromEditor().then(updateContext);
   alerts.start();
 }
 

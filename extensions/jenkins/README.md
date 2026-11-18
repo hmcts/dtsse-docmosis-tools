@@ -2,10 +2,9 @@
 
 VS Code extension for HMCTS CFT Jenkins pipelines. It runs in the cft-workspace: a workspace folder containing `workspace.yaml`.
 
-- **Pipelines view** (activity bar): the repos of one product, then master, nightly master, other branches and pull requests, recent builds and their stages. Refreshes on a timer, paused while the view is hidden.
-- **Product selector**: status bar item and view button. The choice is stored per workspace; `dtsseJenkins.defaultProduct` applies when nothing is chosen, and otherwise the product of the file you are editing is offered once.
+- **Pipelines view** (activity bar): every team (workspace product), collapsed to start with. A team is labelled with its Jenkins view name when it has one and shows its repo count; its icon is the worst state of any job in the view (red, yellow, running, green, or grey with no view or no jobs). Expand a team for its repos, then master, nightly master, other branches and pull requests, recent builds and their stages. A team's repos are only listed when it is expanded. Refreshes on a timer, paused while the view is hidden. Team context menu: Open in Jenkins (when it has a view) and Refresh.
 - **Repo status**: the status bar shows the last master build of the repo you are editing.
-- **PR alerts**: notifies when the Jenkins build of one of your open pull requests finishes or waits for input, with Open Build, Open PR and (on failure) Investigate with Claude. Not limited to the selected product. Only one VS Code window alerts at a time.
+- **PR alerts**: notifies when the Jenkins build of one of your open pull requests finishes or waits for input, with Open Build, Open PR and (on failure) Investigate with Claude. Not limited to a team. Only one VS Code window alerts at a time.
 - **Investigate with Claude**: opens a terminal that runs `hai` (from `@hmcts-cft/hai-cli`) with a prompt describing the failed build.
 
 Jenkins (`https://build.hmcts.net`) needs the VPN. The extension shows a "can't reach Jenkins" state rather than errors when it is down. PR alerts use GitHub's commit statuses, which work without the VPN; the failed stage and duration are added when Jenkins is reachable.
@@ -35,7 +34,6 @@ PR alerts sign in to GitHub through VS Code (`repo` scope) the first time you ac
 
 | Setting                                   | Default         |                                                                                                                                           |
 | ----------------------------------------- | --------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| `dtsseJenkins.defaultProduct`             | `""`            | Product used when none is chosen.                                                                                                         |
 | `dtsseJenkins.productViews`               | `{}`            | Product to Jenkins view name, when they differ. Views are otherwise matched to the product name, ignoring case.                           |
 | `dtsseJenkins.refreshSeconds`             | `60`            | Tree and status bar refresh interval.                                                                                                     |
 | `dtsseJenkins.prAlerts.enabled`           | `true`          | Turn PR alerts on or off.                                                                                                                 |
@@ -49,7 +47,6 @@ All are under **DTSSE Jenkins:** in the command palette.
 
 | Command                                       |                                                |
 | --------------------------------------------- | ---------------------------------------------- |
-| Select Product                                | Choose the product to show.                    |
 | Set Credentials                               | Store the Jenkins URL, username and API token. |
 | Refresh                                       | Reload the tree and status bar.                |
 | Open in Jenkins, Copy Link, Open Pull Request | On tree items.                                 |
@@ -67,3 +64,8 @@ npm run package   # builds dist/extension.cjs and dtsse-jenkins-vscode.vsix
 ```
 
 Logic lives in `src/core` (pure, no `vscode` import); `src/adapters` and `src/extension.ts` are thin VS Code wiring and are excluded from coverage.
+
+## Icons
+
+- `media/jenkins.svg`: the Jenkins logo from [Fluent UI MDL2 icons](https://github.com/microsoft/fluentui) (MIT, © Microsoft Corporation), via Iconify.
+- `media/icon.png`: rendered from the Jenkins logo in [Devicon](https://github.com/devicons/devicon) (MIT, © konpa).

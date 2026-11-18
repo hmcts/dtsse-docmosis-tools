@@ -21,10 +21,20 @@ const client = (f: typeof fetch, auth = true) =>
 
 describe('JenkinsClient requests', () => {
   it('sends basic auth and the right URLs', async () => {
-    const f = fakeFetch(() => json({ views: [{ name: 'PCS', url: 'v' }] }));
-    expect(await client(f).listViews()).toEqual([{ name: 'PCS', url: 'v' }]);
+    const f = fakeFetch(() =>
+      json({
+        views: [
+          { name: 'PCS', url: 'v', jobs: [{ name: 'j', url: 'ju', color: 'blue' }] },
+          { name: 'Empty', url: 'e' },
+        ],
+      }),
+    );
+    expect(await client(f).listViewsWithJobs()).toEqual([
+      { name: 'PCS', url: 'v', jobs: [{ name: 'j', url: 'ju', color: 'blue' }] },
+      { name: 'Empty', url: 'e', jobs: [] },
+    ]);
     const [url, init] = f.mock.calls[0] as [string, RequestInit];
-    expect(url).toBe('https://j/api/json?tree=views[name,url]');
+    expect(url).toBe('https://j/api/json?tree=views[name,url,jobs[name,url,color]]');
     expect((init.headers as Record<string, string>).Authorization).toBe(
       `Basic ${Buffer.from('u:t').toString('base64')}`,
     );
@@ -32,7 +42,7 @@ describe('JenkinsClient requests', () => {
 
   it('omits auth without credentials', async () => {
     const f = fakeFetch(() => json({}));
-    expect(await client(f, false).listViews()).toEqual([]);
+    expect(await client(f, false).listViewsWithJobs()).toEqual([]);
     expect(
       ((f.mock.calls[0] as [string, RequestInit])[1].headers as Record<string, string>).Authorization,
     ).toBeUndefined();
@@ -46,7 +56,6 @@ describe('JenkinsClient requests', () => {
     const seen: string[] = [];
     const f = fakeFetch((url) => {
       seen.push(url);
-      if (url.includes('/view/')) return json({ jobs: [{ name: 'master', url: 'x', color: 'blue' }] });
       if (url.includes('tree=jobs')) return json({ jobs: [{ name: 'master', url: 'm' }] });
       if (url.includes('tree=builds')) return json({ builds: [{ number: 1, url: 'b' }] });
       if (url.includes('tree=lastBuild')) return json({ lastBuild: null });
@@ -54,22 +63,19 @@ describe('JenkinsClient requests', () => {
       return json({ number: 5, url: 'b5' });
     });
     const c = client(f);
-    expect(await c.viewJobs('My View')).toHaveLength(1);
     expect(await c.listJobs('https://j/job/F/job/r')).toEqual([{ name: 'master', url: 'm' }]);
     expect((await c.getJob('https://j/job/F/job/r/job/master/', 5)).builds).toHaveLength(1);
     expect(await c.getLastBuild('https://j/job/x/')).toBeUndefined();
     expect((await c.getStages('https://j/job/x/1/'))[0]?.name).toBe('Build');
     expect((await c.getBuild('https://j/job/x/1')).number).toBe(5);
-    expect(seen[0]).toContain('/view/My%20View/api/json');
-    expect(seen[1]).toBe(
+    expect(seen[0]).toBe(
       'https://j/job/F/job/r/api/json?tree=jobs[name,url,color,lastBuild[number,result,building,timestamp,duration,url]]',
     );
-    expect(seen[2]).toContain('{0,5}');
+    expect(seen[1]).toContain('{0,5}');
   });
 
   it('defaults empty collections', async () => {
     const c = client(fakeFetch(() => json({})));
-    expect(await c.viewJobs('v')).toEqual([]);
     expect(await c.listJobs('u')).toEqual([]);
     expect((await c.getJob('u')).builds).toEqual([]);
     expect(await c.getLastBuild('u')).toBeUndefined();
@@ -101,7 +107,7 @@ describe('JenkinsClient requests', () => {
     [500, 'http'],
   ])('maps HTTP %d to %s', async (status, kind) => {
     const err = await client(fakeFetch(() => new Response('', { status })))
-      .listViews()
+      .listViewsWithJobs()
       .catch((e) => e);
     expect(err).toBeInstanceOf(JenkinsError);
     expect(err.kind).toBe(kind);
@@ -110,7 +116,7 @@ describe('JenkinsClient requests', () => {
 
   it('maps fetch failures to network errors', async () => {
     const err = await client(fakeFetch(() => Promise.reject(new Error('getaddrinfo ENOTFOUND'))))
-      .listViews()
+      .listViewsWithJobs()
       .catch((e) => e);
     expect(err.kind).toBe('network');
     expect(err.message).toContain('ENOTFOUND');
@@ -118,7 +124,7 @@ describe('JenkinsClient requests', () => {
 
   it('treats an HTML login page as an auth problem', async () => {
     const err = await client(fakeFetch(() => new Response('<html>', { status: 200 })))
-      .listViews()
+      .listViewsWithJobs()
       .catch((e) => e);
     expect(err.kind).toBe('auth');
   });

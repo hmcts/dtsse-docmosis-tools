@@ -36,8 +36,6 @@ export class CftWorkspace implements vscode.Disposable {
     this.changed.fire();
   }
 
-  isCloned = (path: string): boolean => this.root !== undefined && existsSync(join(this.root, path));
-
   relativePath(fsPath: string): string | undefined {
     if (!this.root || !fsPath.startsWith(this.root)) return undefined;
     return fsPath.slice(this.root.length + 1);

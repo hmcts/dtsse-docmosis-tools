@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { listProducts, matchView, productForPath, repoForPath, resolveProduct } from '../src/core/products';
+import { listProducts, matchView, repoForPath } from '../src/core/products';
 import type { RepoEntry } from '../src/core/workspaceYaml';
 
 const repo = (path: string, product?: string): RepoEntry => ({
@@ -19,23 +19,13 @@ const repos = [
 ];
 
 describe('listProducts', () => {
-  it('groups by product, counts clones and sorts cloned products first', () => {
-    const products = listProducts(repos, (p) => p === 'apps/pcs/pcs-api' || p === 'apps/zzz/zzz-one');
-    expect(products.map((p) => [p.name, p.repos.length, p.cloned])).toEqual([
-      ['pcs', 2, 1],
-      ['zzz', 1, 1],
-      ['aaa', 1, 0],
-      ['civil', 1, 0],
+  it('groups repos by product and sorts by name', () => {
+    expect(listProducts(repos).map((p) => [p.name, p.repos.length])).toEqual([
+      ['aaa', 1],
+      ['civil', 1],
+      ['pcs', 2],
+      ['zzz', 1],
     ]);
-  });
-
-  it('sorts alphabetically when none are cloned', () => {
-    expect(listProducts(repos, () => false).map((p) => p.name)).toEqual(['aaa', 'civil', 'pcs', 'zzz']);
-  });
-
-  it('puts an uncloned product after a cloned one regardless of order', () => {
-    const two = [repo('apps/a/a', 'a'), repo('apps/b/b', 'b')];
-    expect(listProducts(two, (p) => p === 'apps/b/b').map((p) => p.name)).toEqual(['b', 'a']);
   });
 });
 
@@ -54,15 +44,5 @@ describe('path helpers', () => {
     expect(repoForPath(repos, 'apps/pcs/pcs-api/src/Main.java')?.name).toBe('pcs-api');
     expect(repoForPath(repos, 'apps\\pcs\\pcs-api')?.name).toBe('pcs-api');
     expect(repoForPath(repos, 'apps/pcs/pcs-api-other/x')).toBeUndefined();
-  });
-  it('derives the product from the path', () => {
-    expect(productForPath('apps/pcs/pcs-api/x')).toBe('pcs');
-    expect(productForPath('libs/x/y')).toBeUndefined();
-    expect(productForPath('apps/pcs')).toBeUndefined();
-  });
-  it('resolves the first candidate that is a known product', () => {
-    const products = listProducts(repos, () => false);
-    expect(resolveProduct(products, [undefined, '', 'nope', 'PCS', 'civil'])).toBe('pcs');
-    expect(resolveProduct(products, [undefined])).toBeUndefined();
   });
 });
