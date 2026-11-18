@@ -45,9 +45,18 @@ describe('signToken', () => {
 });
 
 describe('NotifyClient', () => {
-    afterEach(() => {
+    const saved = { HMCTS_TEMPLATE_PREVIEW_NOTIFY_URL: process.env.HMCTS_TEMPLATE_PREVIEW_NOTIFY_URL, NOTIFY_API_URL: process.env.NOTIFY_API_URL };
+
+    beforeEach(() => {
         delete process.env.HMCTS_TEMPLATE_PREVIEW_NOTIFY_URL;
         delete process.env.NOTIFY_API_URL;
+    });
+
+    afterEach(() => {
+        for (const [name, value] of Object.entries(saved)) {
+            if (value === undefined) delete process.env[name];
+            else process.env[name] = value;
+        }
         mock.restoreAll();
     });
 
@@ -60,6 +69,21 @@ describe('NotifyClient', () => {
         const auth = calls[0].init.headers.Authorization;
         assert.match(auth, /^Bearer /);
         assert.equal(decode(auth.slice(7).split('.')[1]).iss, SERVICE);
+    });
+
+    test('asks for one type of template, encoded', async () => {
+        const { calls, impl } = fakeFetch(200, { templates: [] });
+        const client = new NotifyClient(KEY, { baseUrl: 'https://notify.test', fetchImpl: impl });
+        await client.listTemplates('sms');
+        await client.listTemplates('a&b=c');
+        assert.equal(calls[0].url, 'https://notify.test/v2/templates?type=sms');
+        assert.equal(calls[1].url, 'https://notify.test/v2/templates?type=a%26b%3Dc');
+    });
+
+    test('drops trailing slashes from baseUrl', async () => {
+        const { calls, impl } = fakeFetch(200, { templates: [] });
+        await new NotifyClient(KEY, { baseUrl: 'https://notify.test//', fetchImpl: impl }).listTemplates();
+        assert.equal(calls[0].url, 'https://notify.test/v2/templates');
     });
 
     test('reads one template and previews it with personalisation', async () => {

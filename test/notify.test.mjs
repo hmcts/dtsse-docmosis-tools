@@ -20,6 +20,7 @@ import {
     smsCount,
     templateAdminUrl,
 } from '../lib/notify.mjs';
+import * as notify from '../lib/notify.mjs';
 
 const SERVICE = '26785a09-ab16-4eb0-8407-a37497a57506';
 
@@ -221,6 +222,10 @@ describe('smsCount', () => {
         assert.deepEqual(smsCount('ŵ'.repeat(71)), { characters: 71, fragments: 2, unicode: true });
     });
 
+    test('counts Unicode messages by code point, as Notify does', () => {
+        assert.deepEqual(smsCount('😀'.repeat(70)), { characters: 70, fragments: 1, unicode: true });
+    });
+
     test('counts the characters Notify swaps for GSM ones as GSM', () => {
         assert.deepEqual(smsCount('It’s “done” – see…'), { characters: 20, fragments: 1, unicode: false });
         assert.deepEqual(smsCount('a\u00a0b\tc\u200bd'), { characters: 6, fragments: 1, unicode: false });
@@ -250,5 +255,11 @@ describe('renderLocal', () => {
             text: 'Hi Ann # not a heading',
             sms: { characters: 22, fragments: 1, unicode: false },
         });
+    });
+});
+
+describe('exports', () => {
+    test("doesn't share the stateful placeholder regex", () => {
+        assert.equal('PLACEHOLDER' in notify, false);
     });
 });

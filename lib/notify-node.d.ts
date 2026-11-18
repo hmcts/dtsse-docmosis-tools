@@ -1,4 +1,3 @@
-import type { execFile } from 'node:child_process';
 import type { NotifyPreview, NotifyTemplate, Personalisation, TemplateType } from './notify.js';
 
 export interface ApiKey {
@@ -26,7 +25,7 @@ export function notifyApiOverride(): string | undefined;
 export function notifyApiUrl(): string;
 
 export interface ClientOptions {
-    /** Defaults to notifyApiUrl() when the client is made. */
+    /** Trailing slashes are dropped. Defaults to notifyApiUrl() when the client is made. */
     baseUrl?: string;
     fetchImpl?: typeof fetch;
 }
@@ -45,9 +44,16 @@ export class NotifyClient {
 /** A failure to read a secret, with a message to show a person. */
 export class KeyVaultError extends Error {}
 
+/** The part of node:child_process execFile that readSecret calls. */
+export type ExecFileLike = (
+    file: string,
+    args: string[],
+    options: { timeout: number; windowsHide: boolean },
+    callback: (error: (Error & { code?: string | number | null; killed?: boolean }) | null, stdout: string, stderr: string) => void,
+) => unknown;
+
 export interface ReadSecretOptions {
-    /** Called as execFile(file, args, options, callback). */
-    execFileImpl?: typeof execFile;
+    execFileImpl?: ExecFileLike;
 }
 
 /**

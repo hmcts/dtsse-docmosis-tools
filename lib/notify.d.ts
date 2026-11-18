@@ -67,8 +67,6 @@ export interface Placeholder {
     shows: string[];
 }
 
-/** Matches `((name))` and `((name??text))`, with the text between the brackets as group 1. */
-export const PLACEHOLDER: RegExp;
 /** Notify matches personalisation to placeholders ignoring case, spaces, underscores and hyphens. */
 export function placeholderKey(name: string): string;
 export function parsePlaceholder(inner: string): { name: string; conditional?: string };
