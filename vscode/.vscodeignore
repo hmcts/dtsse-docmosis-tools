@@ -2,8 +2,12 @@
 !dist/extension.js
 !dist/webview.js
 !dist/webview.css
+!dist/notify-picker.js
+!dist/notify-editor.js
+!dist/notify.css
 !dist/pdf.worker.min.mjs
 !media/icon.png
+!media/notify.svg
 !package.json
 !README.md
 !LICENSE

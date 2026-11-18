@@ -12,6 +12,7 @@ import { ensureSidecarFolder, readTemplateSidecar, sidecarPath, writeSidecar } f
 import { CachedTemplateReader } from './templateTree';
 import type { InstructionNode } from './tree';
 import { renderBlockers } from './validate';
+import { webviewHtml } from './webviewHtml';
 
 export const VIEW_TYPE = 'hmctsTemplatePreview.docxPreview';
 
@@ -268,32 +269,7 @@ class PreviewSession {
   }
 
   private html(webview: vscode.Webview, dist: vscode.Uri): string {
-    const nonce = randomNonce();
-    const script = webview.asWebviewUri(vscode.Uri.joinPath(dist, 'webview.js'));
-    const style = webview.asWebviewUri(vscode.Uri.joinPath(dist, 'webview.css'));
-    const csp = [
-      "default-src 'none'",
-      `style-src ${webview.cspSource}`,
-      `script-src 'nonce-${nonce}'`,
-      'worker-src blob:',
-      `connect-src ${webview.cspSource}`,
-      `img-src ${webview.cspSource} data: blob:`,
-      `font-src ${webview.cspSource} data: blob:`,
-    ].join('; ');
-    return `<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta http-equiv="Content-Security-Policy" content="${csp}">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<link rel="stylesheet" href="${style}">
-<title>HMCTS Template Preview</title>
-</head>
-<body>
-<div id="app"></div>
-<script nonce="${nonce}" src="${script}"></script>
-</body>
-</html>`;
+    return webviewHtml(webview, dist, { title: 'HMCTS Template Preview', script: 'webview.js', styles: ['webview.css'] });
   }
 }
 
@@ -303,13 +279,6 @@ function workspaceRootFor(uri: vscode.Uri): string {
     vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ??
     path.dirname(uri.fsPath)
   );
-}
-
-function randomNonce(): string {
-  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-  let out = '';
-  for (let i = 0; i < 32; i++) out += chars[Math.floor(Math.random() * chars.length)];
-  return out;
 }
 
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
