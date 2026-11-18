@@ -1,5 +1,5 @@
-// Fails unless dist/cli/docmosis is stored in the vsix with mode 0755, which the extension's
-// stub relies on to exec it, and unless the Templates view's icon ships. Reads the zip's central
+// Fails unless every file the extension loads at runtime is in the vsix, and dist/cli/docmosis is
+// stored with mode 0755, which the extension's stub relies on to exec it. Reads the zip's central
 // directory: the Unix mode is the high half of each entry's external attributes.
 import { readFileSync } from 'node:fs';
 
@@ -21,17 +21,30 @@ for (let i = 0; i < entries; i++) {
   offset += 46 + nameLength + extraLength + commentLength;
 }
 
+const required = [
+  'extension/dist/extension.js',
+  'extension/dist/webview.js',
+  'extension/dist/webview.css',
+  'extension/dist/pdf.worker.min.mjs',
+  'extension/dist/notify-picker.js',
+  'extension/dist/notify-editor.js',
+  'extension/dist/notify.css',
+  'extension/dist/cli/docmosis-cli.mjs',
+  'extension/dist/cli/docmosis.cmd',
+  'extension/media/icon.png',
+  'extension/media/notify.svg',
+  'extension/media/templates.svg',
+];
+const absent = required.filter((name) => !modes.has(name));
+if (absent.length > 0) {
+  console.error(`${file.pathname} is missing ${absent.join(', ')}`);
+  process.exit(1);
+}
+
 const entry = 'extension/dist/cli/docmosis';
 const mode = modes.get(entry);
 if (mode !== 0o755) {
   console.error(`${file.pathname}: ${entry} has mode ${mode === undefined ? 'missing' : mode.toString(8)}, expected 755`);
   process.exit(1);
 }
-console.log(`${file.pathname}: ${entry} is 755`);
-
-const icon = 'extension/media/templates.svg';
-if (!modes.has(icon)) {
-  console.error(`${file.pathname}: ${icon} is missing`);
-  process.exit(1);
-}
-console.log(`${file.pathname}: ${icon} is present`);
+console.log(`${file.pathname}: has the ${required.length} runtime files, and ${entry} is 755`);

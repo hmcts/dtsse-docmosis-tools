@@ -1,7 +1,7 @@
 {
   "name": "hmcts-template-preview",
   "displayName": "HMCTS Template Preview",
-  "description": "Preview Docmosis .docx templates: detects the template's variables, builds an input form and renders the PDF through the hosted dtsse-doc-render service (VPN).",
+  "description": "Preview Docmosis .docx templates through the hosted dtsse-doc-render service (VPN), and browse, preview and draft changes to GOV.UK Notify templates.",
   "version": "0.1.0",
   "publisher": "hmcts",
   "private": true,
@@ -30,7 +30,11 @@
     "docx",
     "preview",
     "pdf",
-    "dtsse-doc-render"
+    "dtsse-doc-render",
+    "gov.uk notify",
+    "notify",
+    "email",
+    "sms"
   ],
   "engines": {
     "vscode": "^1.90.0"
@@ -85,6 +89,44 @@
               }
             }
           }
+        },
+        "hmctsTemplatePreview.notify.products": {
+          "type": "array",
+          "default": [],
+          "markdownDescription": "GOV.UK Notify products to add to the built-in list, or to replace a built-in entry with the same `id`. Each entry names the AAT Key Vault and secret holding the product's Notify API key, which is read with your own `az login`.",
+          "items": {
+            "type": "object",
+            "required": [
+              "id",
+              "vault",
+              "secret"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9-]*$",
+                "description": "A unique id; matching a built-in id replaces that entry."
+              },
+              "label": {
+                "type": "string",
+                "description": "The name shown in the product dropdown."
+              },
+              "vault": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9-]*$",
+                "description": "The Key Vault name, such as sptribs-aat."
+              },
+              "secret": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9-]*$",
+                "description": "The secret holding the Notify API key."
+              },
+              "note": {
+                "type": "string",
+                "description": "Shown under the product dropdown."
+              }
+            }
+          }
         }
       }
     },
@@ -132,6 +174,22 @@
         "command": "hmctsTemplatePreview.openLibraryTemplate",
         "title": "Preview library template",
         "category": "HMCTS Template Preview"
+      },
+      {
+        "command": "hmctsTemplatePreview.notify.refresh",
+        "title": "Refresh Notify templates",
+        "category": "HMCTS Template Preview",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "hmctsTemplatePreview.notify.forgetKey",
+        "title": "Forget GOV.UK Notify API keys",
+        "category": "HMCTS Template Preview"
+      },
+      {
+        "command": "hmctsTemplatePreview.notify.openTemplate",
+        "title": "Open GOV.UK Notify template",
+        "category": "HMCTS Template Preview"
       }
     ],
     "menus": {
@@ -142,6 +200,10 @@
         },
         {
           "command": "hmctsTemplatePreview.openLibraryTemplate",
+          "when": "false"
+        },
+        {
+          "command": "hmctsTemplatePreview.notify.openTemplate",
           "when": "false"
         }
       ],
@@ -162,6 +224,11 @@
           "command": "hmctsTemplatePreview.refreshTemplates",
           "when": "view == hmctsTemplatePreview.templates",
           "group": "navigation@2"
+        },
+        {
+          "command": "hmctsTemplatePreview.notify.refresh",
+          "when": "view == hmctsTemplatePreview.notifyTemplates",
+          "group": "navigation"
         }
       ]
     },
@@ -171,6 +238,11 @@
           "id": "hmctsTemplatePreview",
           "title": "HMCTS Templates",
           "icon": "media/templates.svg"
+        },
+        {
+          "id": "hmctsNotify",
+          "title": "GOV.UK Notify",
+          "icon": "media/notify.svg"
         }
       ]
     },
@@ -181,6 +253,13 @@
           "name": "Templates",
           "icon": "media/templates.svg",
           "contextualTitle": "HMCTS Templates"
+        }
+      ],
+      "hmctsNotify": [
+        {
+          "type": "webview",
+          "id": "hmctsTemplatePreview.notifyTemplates",
+          "name": "Templates"
         }
       ]
     },

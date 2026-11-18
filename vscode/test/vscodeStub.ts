@@ -1,22 +1,36 @@
-/** The parts of the `vscode` API the preview session uses, for unit tests. */
+/** The parts of the `vscode` API the extension uses, for unit tests. */
 import * as path from 'node:path';
 
 type Listener<T> = (value: T) => unknown;
 
 export class Uri {
-  private constructor(readonly fsPath: string) {}
+  private constructor(
+    readonly fsPath: string,
+    readonly scheme = 'file',
+  ) {}
+  get path(): string {
+    return this.fsPath;
+  }
   static file(fsPath: string): Uri {
     return new Uri(fsPath);
   }
+  static from({ scheme, path: p }: { scheme: string; path: string }): Uri {
+    return new Uri(p, scheme);
+  }
   static parse(value: string): Uri {
-    return new Uri(value);
+    const url = new URL(value);
+    return Object.assign(new Uri(url.pathname, url.protocol.slice(0, -1)), { toString: () => value });
   }
   static joinPath(base: Uri, ...parts: string[]): Uri {
-    return new Uri(path.join(base.fsPath, ...parts));
+    return new Uri(path.join(base.fsPath, ...parts), base.scheme);
   }
   toString(): string {
-    return `file://${this.fsPath}`;
+    return `${this.scheme}://${this.fsPath}`;
   }
+}
+
+export enum ViewColumn {
+  Active = -1,
 }
 
 export class RelativePattern {
@@ -75,6 +89,9 @@ export const stub = {
   errors: [] as string[],
   configListeners: [] as Array<(event: { affectsConfiguration(section: string): boolean }) => unknown>,
   openDialog: (): Promise<Uri[] | undefined> => Promise.resolve(undefined),
+  panels: [] as FakePanel[],
+  clipboard: '',
+  opened: [] as string[],
   infos: [] as string[],
   executed: [] as unknown[][],
   commands: new Map<string, (...args: unknown[]) => unknown>(),
@@ -82,6 +99,19 @@ export const stub = {
   signInSession: undefined as string | undefined,
   treeView: undefined as { message?: string; visible: boolean } | undefined,
 };
+
+/** Clears what the stub has recorded. */
+export function resetStub(root = '/'): void {
+  stub.workspaceRoot = root;
+  stub.settings = {};
+  stub.errors = [];
+  stub.panels = [];
+  stub.executed = [];
+  stub.commands = new Map();
+  stub.clipboard = '';
+  stub.opened = [];
+  stub.infos = [];
+}
 
 export const workspace = {
   get workspaceFolders() {
@@ -94,6 +124,20 @@ export const workspace = {
     return disposable;
   },
   createFileSystemWatcher: () => ({ ...disposable, onDidChange: () => disposable, onDidCreate: () => disposable }),
+  registerTextDocumentContentProvider: () => disposable,
+};
+
+export const env = {
+  clipboard: {
+    writeText: (text: string) => {
+      stub.clipboard = text;
+      return Promise.resolve();
+    },
+  },
+  openExternal: (uri: Uri) => {
+    stub.opened.push(uri.toString());
+    return Promise.resolve(true);
+  },
 };
 
 export const window = {
@@ -113,6 +157,13 @@ export const window = {
   },
   createOutputChannel: () => ({ ...disposable, appendLine: () => undefined }),
   registerCustomEditorProvider: () => disposable,
+  registerWebviewViewProvider: () => disposable,
+  createWebviewPanel: (_viewType: string, title: string) => {
+    const panel = new FakePanel();
+    panel.title = title;
+    stub.panels.push(panel);
+    return panel;
+  },
 };
 
 export const commands = {
@@ -132,10 +183,6 @@ export const authentication = {
     return token ? Promise.resolve({ accessToken: token }) : Promise.reject(new Error('no session'));
   },
   onDidChangeSessions: () => disposable,
-};
-
-export const env = {
-  openExternal: () => Promise.resolve(true),
 };
 
 /** An environment variable collection that records what the extension asked for. */
@@ -172,7 +219,19 @@ export class FakePanel {
       return disposable;
     },
   };
-  onDidDispose = () => disposable;
+  title = '';
+  revealed = 0;
+  private disposed: (() => void) | undefined;
+  onDidDispose = (listener: () => void) => {
+    this.disposed = listener;
+    return disposable;
+  };
+  reveal(): void {
+    this.revealed++;
+  }
+  dispose(): void {
+    this.disposed?.();
+  }
   send(message: unknown): void {
     this.receive?.(message);
   }
