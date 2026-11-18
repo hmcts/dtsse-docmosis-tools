@@ -29,7 +29,14 @@ productSelect.addEventListener('change', () => {
   send({ type: 'selectProduct', product: productSelect.value });
 });
 filter.addEventListener('input', () => fillTemplates());
-templateSelect.addEventListener('change', () => openSelected());
+// Chromium fires 'change' on every arrow key in a closed dropdown, so choosing a template only selects it.
+templateSelect.addEventListener('keydown', (event) => {
+  if (event.key === 'Enter') {
+    event.preventDefault();
+    openSelected();
+  }
+});
+templateSelect.addEventListener('dblclick', () => openSelected());
 open.addEventListener('click', () => openSelected());
 refresh.addEventListener('click', () => send({ type: 'refresh' }));
 
@@ -97,6 +104,7 @@ window.addEventListener('message', (event: MessageEvent<HostToPicker>) => {
     case 'init':
       products = msg.products;
       fillProducts(msg.selected);
+      if (!msg.selected) setLoading('');
       break;
     case 'loading':
       if (msg.product !== productSelect.value) {

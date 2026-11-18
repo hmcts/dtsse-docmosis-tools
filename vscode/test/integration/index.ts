@@ -127,7 +127,7 @@ async function notifySmokeTest(workspace: string): Promise<void> {
     });
   });
   await new Promise<void>((resolve) => notify.listen(0, '127.0.0.1', resolve));
-  process.env.NOTIFY_API_URL = `http://127.0.0.1:${(notify.address() as { port: number }).port}`;
+  process.env.HMCTS_TEMPLATE_PREVIEW_NOTIFY_URL = `http://127.0.0.1:${(notify.address() as { port: number }).port}`;
 
   await vscode.workspace
     .getConfiguration('hmctsTemplatePreview')

@@ -2,9 +2,15 @@ import { NotifyClient, type NotifyTemplate } from './client';
 import { KeyStore } from './keyVault';
 import { configuredProducts, type NotifyProduct } from './products';
 
-/** Shared by the side view and the editor panels: one key read and one template list per product. */
+const listId = (product: NotifyProduct) => `${product.vault}/${product.secret}`;
+
+/**
+ * Shared by the side view and the editor panels: one key read and one template list per product.
+ * Panels ask for a client on every request, so forgetting the keys reaches them too.
+ */
 export class NotifyService {
   private readonly templateLists = new Map<string, Promise<NotifyTemplate[]>>();
+  private readonly loadedLists = new Map<string, NotifyTemplate[]>();
 
   constructor(
     readonly keys = new KeyStore(),
@@ -24,20 +30,32 @@ export class NotifyService {
   }
 
   templates(product: NotifyProduct, refresh = false): Promise<NotifyTemplate[]> {
-    const id = `${product.vault}/${product.secret}`;
+    const id = listId(product);
     let list = refresh ? undefined : this.templateLists.get(id);
     if (!list) {
-      list = this.client(product).then((client) => client.listTemplates());
-      this.templateLists.set(id, list);
-      list.catch(() => {
-        if (this.templateLists.get(id) === list) this.templateLists.delete(id);
-      });
+      const loading = this.client(product).then((client) => client.listTemplates());
+      list = loading;
+      this.templateLists.set(id, loading);
+      loading.then(
+        (templates) => {
+          if (this.templateLists.get(id) === loading) this.loadedLists.set(id, templates);
+        },
+        () => {
+          if (this.templateLists.get(id) === loading) this.templateLists.delete(id);
+        },
+      );
     }
     return list;
+  }
+
+  /** The template from a list already loaded, without waiting for one. */
+  loadedTemplate(product: NotifyProduct, templateId: string): NotifyTemplate | undefined {
+    return this.loadedLists.get(listId(product))?.find((t) => t.id === templateId);
   }
 
   forgetKeys(): void {
     this.keys.forget();
     this.templateLists.clear();
+    this.loadedLists.clear();
   }
 }

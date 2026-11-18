@@ -26,8 +26,7 @@ export type PickerToHost =
   | { type: 'ready' }
   | { type: 'selectProduct'; product: string }
   | { type: 'refresh' }
-  | { type: 'openTemplate'; template: string }
-  | { type: 'forgetKey' };
+  | { type: 'openTemplate'; template: string };
 
 export interface EditorTemplate {
   id: string;
@@ -62,6 +61,7 @@ export type HostToEditor =
       /** True when Notify's version is newer than the one the draft was started from. */
       staleDraft: boolean;
     }
+  | { type: 'loading' }
   | { type: 'loadError'; message: string }
   | { type: 'data'; data: JsonObject }
   | { type: 'previewing'; seq: number }
@@ -71,6 +71,8 @@ export type HostToEditor =
 
 export type EditorToHost =
   | { type: 'ready' }
+  /** Load the template again after it failed to load. */
+  | { type: 'retry' }
   /** `id` increases with every request, so the webview can tell which request a result answers. */
   | { type: 'preview'; id: number; data: JsonObject }
   | { type: 'cancelPreview' }

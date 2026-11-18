@@ -3,7 +3,7 @@ import { el } from '../../webview/dom';
 import { renderForm } from '../../webview/form';
 import { renderLocal, smsCount, notifyMarkdown } from '../localRender';
 import type { EditorTemplate, EditorToHost, HostToEditor, PreviewContent } from '../messages';
-import { findPlaceholders, personalisationSchema } from '../placeholders';
+import { dataKey, findPlaceholders, formValues, personalisationSchema } from '../placeholders';
 
 declare function acquireVsCodeApi(): { postMessage(message: EditorToHost): void };
 const vscode = acquireVsCodeApi();
@@ -33,14 +33,17 @@ const button = (label: string, onClick: () => void, cls = 'secondary', title?: s
 const viewButton = button('View', () => setMode('view'));
 const editButton = button('Edit', () => setMode('edit'));
 viewButton.setAttribute('aria-pressed', 'true');
+const retryButton = button('Retry', () => send({ type: 'retry' }), 'primary', 'Load the template from Notify again');
+retryButton.hidden = true;
 const status = el('span', { class: 'status' }, 'Loading…');
 const toolbar = el(
   'div',
   { class: 'toolbar' },
   el('span', { class: 'mode-switch', role: 'group', 'aria-label': 'Mode' }, viewButton, editButton),
-  button('Load data…', () => send({ type: 'loadData' })),
-  button('Save data', () => send({ type: 'saveData', data })),
+  button('Load data…', () => template && send({ type: 'loadData' })),
+  button('Save data', () => template && send({ type: 'saveData', data })),
   button('Open in Notify', () => send({ type: 'openInNotify' }), 'secondary', 'Open the template in the GOV.UK Notify web app'),
+  retryButton,
   status,
 );
 const staleBanner = el('div', { class: 'banner warn', role: 'status', hidden: true });
@@ -127,9 +130,9 @@ function rebuildForm(force = false): void {
     return;
   }
   formHost.replaceChildren(
-    renderForm(personalisationSchema(placeholders), data, {
-      set(path: PathSegment[], value: Json | undefined) {
-        data = setAt(data, path, value);
+    renderForm(personalisationSchema(placeholders), formValues(placeholders, data), {
+      set([name, ...rest]: PathSegment[], value: Json | undefined) {
+        data = setAt(data, [dataKey(data, String(name)), ...rest], value);
         dataEdited();
       },
       addRow: () => undefined,
@@ -164,6 +167,7 @@ function refreshPreview(now: boolean): void {
 
 function requestPreview(): void {
   window.clearTimeout(previewTimer);
+  if (!template) return;
   send({ type: 'preview', id: ++sentId, data });
 }
 
@@ -227,6 +231,7 @@ function showNotify(preview: PreviewContent, missing: string[]): void {
 }
 
 function setMode(next: 'view' | 'edit'): void {
+  if (!template) return;
   mode = next;
   viewButton.setAttribute('aria-pressed', String(next === 'view'));
   editButton.setAttribute('aria-pressed', String(next === 'edit'));
@@ -270,6 +275,7 @@ window.addEventListener('message', (event: MessageEvent<HostToEditor>) => {
       metaLine.textContent = `${TYPE_LABELS[msg.template.type]} template, version ${msg.template.version}, ${msg.product.label}`;
       dataPathLabel.textContent = `Data: ${msg.dataPath}`;
       show(errorBanner, undefined);
+      retryButton.hidden = true;
       show(
         staleBanner,
         msg.staleDraft && msg.draft
@@ -281,8 +287,14 @@ window.addEventListener('message', (event: MessageEvent<HostToEditor>) => {
       setMode(msg.draft ? 'edit' : 'view');
       break;
     }
+    case 'loading':
+      status.textContent = 'Loading…';
+      retryButton.hidden = true;
+      show(errorBanner, undefined);
+      break;
     case 'loadError':
       status.textContent = "Couldn't load";
+      retryButton.hidden = false;
       show(errorBanner, msg.message);
       break;
     case 'data':

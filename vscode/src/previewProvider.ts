@@ -4,6 +4,7 @@ import * as path from 'node:path';
 import { RenderError } from '@hmcts-cft/docmosis-tools';
 import * as vscode from 'vscode';
 import { isObject, type JsonObject } from './data';
+import { errorMessage } from './errorMessage';
 import type { HostToWebview, TemplateInfo, WebviewToHost } from './messages';
 import { LatestRenderer, renderPdf } from './render';
 import { fieldsForFailure, parseRenderFailures } from './failure';
@@ -134,7 +135,7 @@ class PreviewSession {
       if (template) this.post({ type: 'template', template });
     } catch (error) {
       this.tree = undefined;
-      this.post({ type: 'templateError', message: message(error) });
+      this.post({ type: 'templateError', message: errorMessage(error) });
     }
   }
 
@@ -142,8 +143,8 @@ class PreviewSession {
     try {
       await this.handle(msg);
     } catch (error) {
-      this.output.appendLine(`Couldn't handle "${msg.type}": ${message(error)}`);
-      void vscode.window.showErrorMessage(`HMCTS Template Preview: ${message(error)}`);
+      this.output.appendLine(`Couldn't handle "${msg.type}": ${errorMessage(error)}`);
+      void vscode.window.showErrorMessage(`HMCTS Template Preview: ${errorMessage(error)}`);
     }
   }
 
@@ -153,7 +154,7 @@ class PreviewSession {
         return this.init();
       case 'render':
         void writeSidecar(this.root, this.dataFile, msg.data).catch((e) =>
-          this.output.appendLine(`Couldn't save ${this.dataFile}: ${message(e)}`),
+          this.output.appendLine(`Couldn't save ${this.dataFile}: ${errorMessage(e)}`),
         );
         if (this.schema) {
           const issues = renderBlockers(this.schema, msg.data, msg.dev);
@@ -183,8 +184,8 @@ class PreviewSession {
       template = (await this.loadTemplate(true))!;
     } catch (error) {
       this.tree = undefined;
-      this.output.appendLine(`Couldn't read ${this.docx}: ${message(error)}`);
-      this.post({ type: 'templateError', message: message(error) });
+      this.output.appendLine(`Couldn't read ${this.docx}: ${errorMessage(error)}`);
+      this.post({ type: 'templateError', message: errorMessage(error) });
       return;
     }
     let data: JsonObject = {};
@@ -200,7 +201,7 @@ class PreviewSession {
         }
       }
     } catch (error) {
-      this.post({ type: 'info', message: `Ignored unreadable ${this.dataFile}: ${message(error)}` });
+      this.post({ type: 'info', message: `Ignored unreadable ${this.dataFile}: ${errorMessage(error)}` });
     }
     this.post({
       type: 'init',
@@ -217,9 +218,9 @@ class PreviewSession {
     try {
       await writeSidecar(this.root, this.dataFile, data);
     } catch (error) {
-      this.output.appendLine(`Couldn't save ${this.dataFile}: ${message(error)}`);
-      this.post({ type: 'info', message: `Couldn't save ${relative}: ${message(error)}` });
-      void vscode.window.showErrorMessage(`HMCTS Template Preview: couldn't save ${relative}: ${message(error)}`);
+      this.output.appendLine(`Couldn't save ${this.dataFile}: ${errorMessage(error)}`);
+      this.post({ type: 'info', message: `Couldn't save ${relative}: ${errorMessage(error)}` });
+      void vscode.window.showErrorMessage(`HMCTS Template Preview: couldn't save ${relative}: ${errorMessage(error)}`);
       return;
     }
     this.post({ type: 'info', message: `Saved ${relative}` });
@@ -239,7 +240,7 @@ class PreviewSession {
       if (!isObject(parsed)) throw new Error('the file must contain a JSON object');
       this.post({ type: 'data', data: parsed });
     } catch (error) {
-      this.post({ type: 'info', message: `Couldn't load ${path.basename(file.fsPath)}: ${message(error)}` });
+      this.post({ type: 'info', message: `Couldn't load ${path.basename(file.fsPath)}: ${errorMessage(error)}` });
     }
   }
 
@@ -281,4 +282,3 @@ function workspaceRootFor(uri: vscode.Uri): string {
   );
 }
 
-const message = (e: unknown) => (e instanceof Error ? e.message : String(e));

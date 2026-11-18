@@ -66,7 +66,12 @@ export class NotifyApiError extends Error {
   }
 }
 
-export const notifyApiUrl = (): string => (process.env.NOTIFY_API_URL || NOTIFY_API_URL).replace(/\/+$/, '');
+export const NOTIFY_URL_ENV = 'HMCTS_TEMPLATE_PREVIEW_NOTIFY_URL';
+
+/** The Notify API set by the environment in place of the public one, if any. */
+export const notifyApiOverride = (): string | undefined => process.env[NOTIFY_URL_ENV]?.trim().replace(/\/+$/, '') || undefined;
+
+export const notifyApiUrl = (): string => notifyApiOverride() ?? NOTIFY_API_URL;
 
 export const templateAdminUrl = (serviceId: string, templateId: string): string =>
   `${NOTIFY_ADMIN_URL}/services/${serviceId}/templates/${templateId}`;

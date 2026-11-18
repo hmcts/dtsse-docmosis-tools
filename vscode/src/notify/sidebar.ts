@@ -1,5 +1,7 @@
 import * as vscode from 'vscode';
+import { errorMessage } from '../errorMessage';
 import { webviewHtml } from '../webviewHtml';
+import { NOTIFY_URL_ENV, notifyApiOverride } from './client';
 import type { HostToPicker, PickerToHost, TemplateSummary } from './messages';
 import type { NotifyPanels } from './panel';
 import type { NotifyProduct } from './products';
@@ -9,17 +11,30 @@ export const PICKER_VIEW_ID = 'hmctsTemplatePreview.notifyTemplates';
 const SELECTED_KEY = 'notify.product';
 
 /** The side view: choose a product, then one of its templates to open in an editor panel. */
-export class NotifySidebar implements vscode.WebviewViewProvider {
+export class NotifySidebar implements vscode.WebviewViewProvider, vscode.Disposable {
   private view: vscode.WebviewView | undefined;
   private selected: string | undefined;
+  /** The product whose templates were last loaded, to tell whether a settings change moved its key. */
+  private loaded: NotifyProduct | undefined;
   private load = 0;
+  private readonly disposables: vscode.Disposable[] = [];
 
   constructor(
     private readonly context: vscode.ExtensionContext,
     private readonly output: vscode.OutputChannel,
     private readonly service: NotifyService,
     private readonly panels: NotifyPanels,
-  ) {}
+  ) {
+    this.disposables.push(
+      vscode.workspace.onDidChangeConfiguration((e) => {
+        if (e.affectsConfiguration('hmctsTemplatePreview.notify.products')) void this.productsChanged();
+      }),
+    );
+  }
+
+  dispose(): void {
+    this.disposables.forEach((d) => d.dispose());
+  }
 
   resolveWebviewView(view: vscode.WebviewView): void {
     this.view = view;
@@ -47,13 +62,13 @@ export class NotifySidebar implements vscode.WebviewViewProvider {
     this.post({ type: 'status', message: 'Forgot the Notify API keys; they are read from Key Vault again when next needed.' });
   }
 
-  /** Opens a template in an editor panel, selecting its product in the view. */
+  /** Opens a template in an editor panel, selecting its product in the view. The panel fetches the template itself. */
   async openTemplate(productId: string, templateId: string): Promise<void> {
     const product = this.requireProduct(productId);
-    if (this.selected !== productId) await this.select(productId);
-    const templates = await this.service.templates(product);
-    const template = templates.find((t) => t.id === templateId);
-    this.panels.open(product, { id: templateId, name: template?.name ?? templateId });
+    if (this.selected !== productId) {
+      this.select(productId).catch((e) => this.output.appendLine(`Couldn't select ${productId}: ${errorMessage(e)}`));
+    }
+    this.panels.open(product, { id: templateId, name: this.service.loadedTemplate(product, templateId)?.name ?? templateId });
   }
 
   private post(message: HostToPicker): void {
@@ -64,35 +79,43 @@ export class NotifySidebar implements vscode.WebviewViewProvider {
     try {
       await this.handle(msg);
     } catch (error) {
-      this.output.appendLine(`Couldn't handle "${msg.type}": ${message(error)}`);
-      void vscode.window.showErrorMessage(`HMCTS Template Preview: ${message(error)}`);
+      this.output.appendLine(`Couldn't handle "${msg.type}": ${errorMessage(error)}`);
+      void vscode.window.showErrorMessage(`HMCTS Template Preview: ${errorMessage(error)}`);
     }
   }
 
   private async handle(msg: PickerToHost): Promise<void> {
     switch (msg.type) {
-      case 'ready': {
-        const products = this.service.products();
+      case 'ready':
         this.selected ??= this.context.globalState.get<string>(SELECTED_KEY);
-        if (this.selected && !products.some((p) => p.id === this.selected)) this.selected = undefined;
-        this.post({
-          type: 'init',
-          products: products.map(({ id, label, vault, secret, note }) => ({ id, label, vault, secret, ...(note ? { note } : {}) })),
-          ...(this.selected ? { selected: this.selected } : {}),
-        });
+        this.postProducts();
         if (this.selected) await this.loadTemplates(false);
         return;
-      }
       case 'selectProduct':
         return this.select(msg.product);
       case 'refresh':
         return this.refresh();
-      case 'forgetKey':
-        return this.forgetKey();
       case 'openTemplate':
         if (!this.selected) return;
         return this.openTemplate(this.selected, msg.template);
     }
+  }
+
+  private postProducts(): void {
+    const products = this.service.products();
+    if (this.selected && !products.some((p) => p.id === this.selected)) this.selected = undefined;
+    this.post({
+      type: 'init',
+      products: products.map(({ id, label, vault, secret, note }) => ({ id, label, vault, secret, ...(note ? { note } : {}) })),
+      ...(this.selected ? { selected: this.selected } : {}),
+    });
+  }
+
+  private async productsChanged(): Promise<void> {
+    if (!this.view) return;
+    this.postProducts();
+    const product = this.selected ? this.service.product(this.selected) : undefined;
+    if (product && (product.vault !== this.loaded?.vault || product.secret !== this.loaded?.secret)) await this.loadTemplates(false);
   }
 
   private async select(productId: string): Promise<void> {
@@ -112,6 +135,7 @@ export class NotifySidebar implements vscode.WebviewViewProvider {
     const product = this.selected ? this.service.product(this.selected) : undefined;
     if (!product) return;
     const load = ++this.load;
+    this.loaded = product;
     const cached = this.service.keys.has(product.vault, product.secret);
     this.post({
       type: 'loading',
@@ -123,18 +147,18 @@ export class NotifySidebar implements vscode.WebviewViewProvider {
       if (load !== this.load) return;
       const summaries: TemplateSummary[] = templates.map(({ id, name, type }) => ({ id, name, type }));
       const count = `${summaries.length} template${summaries.length === 1 ? '' : 's'}`;
+      const override = notifyApiOverride();
       this.post({
         type: 'templates',
         product: product.id,
         templates: summaries,
-        status: `${count}. Key from ${product.vault}/${product.secret}, kept in memory for this session.`,
+        status: `${count}. Key from ${product.vault}/${product.secret}, kept in memory for this session.${override ? ` Using the Notify API at ${override}, set by ${NOTIFY_URL_ENV}.` : ''}`,
       });
     } catch (error) {
       if (load !== this.load) return;
-      this.output.appendLine(`Couldn't load Notify templates for ${product.label}: ${message(error)}`);
-      this.post({ type: 'error', product: product.id, message: message(error) });
+      this.output.appendLine(`Couldn't load Notify templates for ${product.label}: ${errorMessage(error)}`);
+      this.post({ type: 'error', product: product.id, message: errorMessage(error) });
     }
   }
 }
 
-const message = (e: unknown) => (e instanceof Error ? e.message : String(e));

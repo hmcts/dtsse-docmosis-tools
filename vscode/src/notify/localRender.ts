@@ -38,14 +38,31 @@ export function fill(text: string, data: JsonObject, lists: 'bullets' | 'inline'
 const escapeHtml = (text: string) =>
   text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 
-const LINK = /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)|(https?:\/\/[^\s<]*[^\s<.,;:!?)])/g;
+const HOLE = String.raw`\(\([^()]+\)\)`;
+const MARKDOWN_LINK = String.raw`\[([^\]]+)\]\((https?:\/\/(?:${HOLE}|[^\s()])+)\)`;
+/** A bare URL ends at a space, a quote or an angle bracket, and not on trailing punctuation. */
+const BARE_URL = String.raw`(https?:\/\/(?:${HOLE}|(?!\(\()[^\s<>"'])*(?:${HOLE}|(?!\(\()[^\s<>"'.,;:!?)]))`;
+const TOKEN = new RegExp(`${MARKDOWN_LINK}|${BARE_URL}|(${HOLE})`, 'g');
 
+const withPlaceholders = (text: string) =>
+  text
+    .split(new RegExp(`(${HOLE})`))
+    .map((piece, i) => (i % 2 ? `<span class="placeholder">${escapeHtml(piece)}</span>` : escapeHtml(piece)))
+    .join('');
+
+/** Links and placeholders are found in the raw text, then each piece is escaped on its own. */
 function inline(text: string): string {
-  return escapeHtml(text)
-    .replace(LINK, (_m, label: string | undefined, href: string | undefined, bare: string | undefined) =>
-      label !== undefined ? `<a href="${href}">${label}</a>` : `<a href="${bare}">${bare}</a>`,
-    )
-    .replace(PLACEHOLDER, (whole) => `<span class="placeholder">${whole}</span>`);
+  let html = '';
+  let last = 0;
+  for (const match of text.matchAll(TOKEN)) {
+    const [whole, label, href, bare] = match;
+    html += escapeHtml(text.slice(last, match.index));
+    if (label !== undefined) html += `<a href="${escapeHtml(href!)}">${withPlaceholders(label)}</a>`;
+    else if (bare !== undefined) html += `<a href="${escapeHtml(bare)}">${withPlaceholders(bare)}</a>`;
+    else html += withPlaceholders(whole);
+    last = match.index + whole.length;
+  }
+  return html + escapeHtml(text.slice(last));
 }
 
 /** Notify's markdown: `#` headings, bullets, numbered lists, `^` inset text, `---` rules, links, paragraphs and line breaks. */
@@ -116,7 +133,34 @@ const GSM = new Set(
 );
 const GSM_EXTENDED = new Set('^{}\\[~]|€\f');
 
-export function smsCount(text: string): SmsCount {
+/** Characters Notify replaces with GSM ones, or removes, before sending a text message (SanitiseText in notifications-utils). */
+const SMS_REPLACEMENTS: Record<string, string> = {
+  '\u2011': '-', // non-breaking hyphen
+  '\u2013': '-', // en dash
+  '\u2014': '-', // em dash
+  '\u2212': '-', // minus sign
+  '\u2026': '...', // ellipsis
+  '\u2018': "'",
+  '\u2019': "'",
+  '\u201a': "'",
+  '\u201c': '"',
+  '\u201d': '"',
+  '\u201e': '"',
+  '\u180e': '',
+  '\u200b': '',
+  '\u200c': '',
+  '\u2060': '',
+  '\ufeff': '',
+  '\u2028': '',
+  '\u2029': '',
+  '\u00a0': ' ', // non-breaking space
+  '\u202f': ' ', // narrow non-breaking space
+  '\t': ' ',
+};
+const SMS_REPLACEABLE = new RegExp(`[${Object.keys(SMS_REPLACEMENTS).join('')}]`, 'g');
+
+export function smsCount(raw: string): SmsCount {
+  const text = raw.replace(SMS_REPLACEABLE, (c) => SMS_REPLACEMENTS[c]!);
   const chars = [...text];
   const unicode = chars.some((c) => !GSM.has(c) && !GSM_EXTENDED.has(c));
   const characters = unicode ? text.length : chars.reduce((n, c) => n + (GSM_EXTENDED.has(c) ? 2 : 1), 0);

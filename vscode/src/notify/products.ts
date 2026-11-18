@@ -20,8 +20,6 @@ export interface NotifyProduct {
  * - Copies of keys listed here: the `*-secondary` probate keys, the per-product
  *   `notify-mca-api-key` copies, `cath-bootstrap-aat` and `ethos-shared-aat`.
  * - Transcribe, which has no key seeded in AAT.
- * - Vaults that refused a secret list: amp, cath-ss*, dg-docassembly-api, dtsse-ah-creds,
- *   ektestkv* and mi-vault.
  */
 export const BUILT_IN_PRODUCTS: readonly NotifyProduct[] = [
   { id: 'adoption', label: 'Adoption', vault: 'adoption-aat', secret: 'uk-gov-notify-api-key' },

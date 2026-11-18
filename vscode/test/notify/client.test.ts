@@ -1,6 +1,6 @@
 import { createHmac } from 'node:crypto';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { NotifyApiError, NotifyClient, notifyApiUrl, parseApiKey, signToken, templateAdminUrl } from '../../src/notify/client';
+import { NotifyApiError, NotifyClient, notifyApiOverride, notifyApiUrl, parseApiKey, signToken, templateAdminUrl } from '../../src/notify/client';
 import { KEY, SECRET, SERVICE } from './fixtures';
 
 const decode = (part: string) => JSON.parse(Buffer.from(part, 'base64url').toString('utf8')) as Record<string, unknown>;
@@ -38,7 +38,7 @@ describe('signToken', () => {
 
 describe('NotifyClient', () => {
   afterEach(() => {
-    delete process.env.NOTIFY_API_URL;
+    delete process.env.HMCTS_TEMPLATE_PREVIEW_NOTIFY_URL;
   });
 
   it('lists templates with a bearer token', async () => {
@@ -88,10 +88,14 @@ describe('NotifyClient', () => {
     await expect(down.listTemplates()).rejects.toThrow("Can't reach GOV.UK Notify at https://notify.test: ENOTFOUND notify.test");
   });
 
-  it('uses NOTIFY_API_URL over the public API', async () => {
+  it('uses HMCTS_TEMPLATE_PREVIEW_NOTIFY_URL over the public API', async () => {
+    process.env.NOTIFY_API_URL = 'http://127.0.0.1:1/';
     expect(notifyApiUrl()).toBe('https://api.notifications.service.gov.uk');
-    process.env.NOTIFY_API_URL = 'http://127.0.0.1:9999/';
+    expect(notifyApiOverride()).toBeUndefined();
+    delete process.env.NOTIFY_API_URL;
+    process.env.HMCTS_TEMPLATE_PREVIEW_NOTIFY_URL = 'http://127.0.0.1:9999/';
     expect(notifyApiUrl()).toBe('http://127.0.0.1:9999');
+    expect(notifyApiOverride()).toBe('http://127.0.0.1:9999');
     const fetchMock = vi.fn(async (_url: string) => new Response('{"templates":[]}'));
     vi.stubGlobal('fetch', fetchMock);
     await new NotifyClient(KEY).listTemplates();

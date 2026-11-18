@@ -2,9 +2,10 @@ import * as fsp from 'node:fs/promises';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { isObject, type JsonObject } from '../data';
+import { errorMessage } from '../errorMessage';
 import { LatestRenderer } from '../render';
 import { webviewHtml } from '../webviewHtml';
-import { NotifyClient, templateAdminUrl, type NotifyPreview, type NotifyTemplate } from './client';
+import { templateAdminUrl, type NotifyPreview, type NotifyTemplate } from './client';
 import type { Draft, EditorTemplate, EditorToHost, HostToEditor } from './messages';
 import { apiPersonalisation, findPlaceholders } from './placeholders';
 import type { NotifyProduct } from './products';
@@ -50,6 +51,7 @@ export class NotifyPanels {
     const existing = this.sessions.get(id);
     if (existing) {
       existing.panel.reveal();
+      if (existing.failed) void existing.load();
       return;
     }
     const dist = vscode.Uri.joinPath(this.context.extensionUri, 'dist');
@@ -86,10 +88,13 @@ export class NotifyEditorSession {
   private readonly disposables: vscode.Disposable[] = [];
   private readonly storage: NotifyStorage;
   private readonly renderer: LatestRenderer<PreviewRequest, PreviewOutput>;
-  private client: NotifyClient | undefined;
   private template: NotifyTemplate | undefined;
+  private loading: Promise<void> | undefined;
+  private loadFailed = false;
   /** The Notify version the saved draft was started from, while there is one. */
   private draftBase: number | undefined;
+  /** Draft writes and deletes run one at a time, in the order the webview sent them. */
+  private draftQueue: Promise<void> = Promise.resolve();
 
   constructor(
     private readonly context: vscode.ExtensionContext,
@@ -130,6 +135,17 @@ export class NotifyEditorSession {
     this.disposables.forEach((d) => d.dispose());
   }
 
+  /** True when the template failed to load and hasn't been loaded again since. */
+  get failed(): boolean {
+    return this.loadFailed && !this.loading;
+  }
+
+  /** Loads the template and the saved data and draft, unless a load is already under way. */
+  load(): Promise<void> {
+    this.loading ??= this.init().finally(() => (this.loading = undefined));
+    return this.loading;
+  }
+
   private post(message: HostToEditor): void {
     void this.panel.webview.postMessage(message);
   }
@@ -138,15 +154,16 @@ export class NotifyEditorSession {
     try {
       await this.handle(msg);
     } catch (error) {
-      this.output.appendLine(`Couldn't handle "${msg.type}": ${message(error)}`);
-      void vscode.window.showErrorMessage(`HMCTS Template Preview: ${message(error)}`);
+      this.output.appendLine(`Couldn't handle "${msg.type}": ${errorMessage(error)}`);
+      void vscode.window.showErrorMessage(`HMCTS Template Preview: ${errorMessage(error)}`);
     }
   }
 
   private async handle(msg: EditorToHost): Promise<void> {
     switch (msg.type) {
       case 'ready':
-        return this.init();
+      case 'retry':
+        return this.load();
       case 'preview':
         this.renderer.request({ id: msg.id, data: msg.data });
         return;
@@ -154,16 +171,18 @@ export class NotifyEditorSession {
         this.renderer.cancel();
         return;
       case 'dataChanged':
-        return this.storage.writeData(msg.data).catch((e) => this.output.appendLine(`Couldn't save ${this.storage.dataFile}: ${message(e)}`));
+        return this.storage.writeData(msg.data).catch((e) => this.output.appendLine(`Couldn't save ${this.storage.dataFile}: ${errorMessage(e)}`));
       case 'saveData':
         return this.saveData(msg.data);
       case 'loadData':
         return this.loadData();
       case 'saveDraft':
-        return this.saveDraft(msg.subject, msg.body);
+        return this.queueDraft(() => this.saveDraft(msg.subject, msg.body));
       case 'discardDraft':
-        this.draftBase = undefined;
-        await this.storage.deleteDraft();
+        await this.queueDraft(async () => {
+          this.draftBase = undefined;
+          await this.storage.deleteDraft();
+        });
         this.post({ type: 'info', message: "Reverted to Notify's version." });
         return;
       case 'copy':
@@ -172,19 +191,30 @@ export class NotifyEditorSession {
         return;
       case 'showDiff':
         return this.showDiff(msg.subject, msg.body);
-      case 'openInNotify':
-        if (this.client) await vscode.env.openExternal(vscode.Uri.parse(templateAdminUrl(this.client.serviceId, this.templateId)));
+      case 'openInNotify': {
+        const client = await this.service.client(this.product);
+        await vscode.env.openExternal(vscode.Uri.parse(templateAdminUrl(client.serviceId, this.templateId)));
         return;
+      }
     }
   }
 
+  private queueDraft(operation: () => Promise<void>): Promise<void> {
+    const run = this.draftQueue.then(operation);
+    this.draftQueue = run.catch(() => undefined);
+    return run;
+  }
+
   private async init(): Promise<void> {
+    if (this.loadFailed) this.post({ type: 'loading' });
     try {
-      this.client = await this.service.client(this.product);
-      this.template = await this.client.getTemplate(this.templateId);
+      const client = await this.service.client(this.product);
+      this.template = await client.getTemplate(this.templateId);
+      this.loadFailed = false;
     } catch (error) {
-      this.output.appendLine(`Couldn't load Notify template ${this.templateId} for ${this.product.label}: ${message(error)}`);
-      this.post({ type: 'loadError', message: message(error) });
+      this.loadFailed = true;
+      this.output.appendLine(`Couldn't load Notify template ${this.templateId} for ${this.product.label}: ${errorMessage(error)}`);
+      this.post({ type: 'loadError', message: errorMessage(error) });
       return;
     }
     this.panel.title = `Notify: ${this.template.name}`;
@@ -195,12 +225,12 @@ export class NotifyEditorSession {
     try {
       data = (await this.storage.readData()) ?? {};
     } catch (error) {
-      this.post({ type: 'info', message: `Ignored unreadable ${relative(this.storage.dataFile)}: ${message(error)}` });
+      this.post({ type: 'info', message: `Ignored unreadable ${relative(this.storage.dataFile)}: ${errorMessage(error)}` });
     }
     try {
       draft = await this.storage.readDraft();
     } catch (error) {
-      this.post({ type: 'info', message: `Ignored unreadable ${relative(this.storage.draftFile)}: ${message(error)}` });
+      this.post({ type: 'info', message: `Ignored unreadable ${relative(this.storage.draftFile)}: ${errorMessage(error)}` });
     }
     this.draftBase = draft?.baseVersion;
     this.post({
@@ -215,10 +245,11 @@ export class NotifyEditorSession {
   }
 
   private async preview(request: PreviewRequest, signal: AbortSignal): Promise<PreviewOutput> {
-    if (!this.client || !this.template) throw new Error('The template has not loaded.');
+    if (!this.template) throw new Error('The template has not loaded.');
     const placeholders = findPlaceholders(this.template.subject, this.template.body);
     const { personalisation, missing } = apiPersonalisation(placeholders, request.data);
-    const preview = await this.client.previewTemplate(this.templateId, personalisation, signal);
+    const client = await this.service.client(this.product);
+    const preview = await client.previewTemplate(this.templateId, personalisation, signal);
     return { id: request.id, preview, missing };
   }
 
@@ -251,8 +282,8 @@ export class NotifyEditorSession {
     try {
       await this.storage.writeData(data);
     } catch (error) {
-      this.post({ type: 'info', message: `Couldn't save ${relative}: ${message(error)}` });
-      void vscode.window.showErrorMessage(`HMCTS Template Preview: couldn't save ${relative}: ${message(error)}`);
+      this.post({ type: 'info', message: `Couldn't save ${relative}: ${errorMessage(error)}` });
+      void vscode.window.showErrorMessage(`HMCTS Template Preview: couldn't save ${relative}: ${errorMessage(error)}`);
       return;
     }
     this.post({ type: 'info', message: `Saved ${relative}` });
@@ -272,7 +303,7 @@ export class NotifyEditorSession {
       if (!isObject(parsed)) throw new Error('the file must contain a JSON object');
       this.post({ type: 'data', data: parsed });
     } catch (error) {
-      this.post({ type: 'info', message: `Couldn't load ${path.basename(file.fsPath)}: ${message(error)}` });
+      this.post({ type: 'info', message: `Couldn't load ${path.basename(file.fsPath)}: ${errorMessage(error)}` });
     }
   }
 }
@@ -289,4 +320,3 @@ function storageRoot(context: vscode.ExtensionContext): string {
   return vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? context.globalStorageUri.fsPath;
 }
 
-const message = (e: unknown) => (e instanceof Error ? e.message : String(e));

@@ -30,7 +30,7 @@ Data is saved on every render at `<workspaceFolder>/.hmcts-template-preview/<tem
 Notify templates can only be changed in the Notify web app: its API lists, reads and previews them, but can't write them. The extension adds a **GOV.UK Notify** icon to the activity bar for trying personalisation against a product's templates and drafting a change before you paste it into Notify.
 
 1. Click the icon and choose a product. The extension reads that product's Notify API key from its AAT Key Vault with your own `az` login, and keeps it in memory for the session only. It is never written to disk.
-2. Choose a template from the dropdown, which groups them into email, text message and letter and can be filtered by name. The template opens in an editor tab.
+2. Choose a template from the dropdown, which groups them into email, text message and letter and can be filtered by name, then click **Open** or press Enter. The template opens in an editor tab.
 3. **View** mode shows a personalisation form beside Notify's own preview. The preview updates 600 ms after you stop typing. A placeholder you leave empty is sent as `((name))`, because Notify refuses a preview with personalisation missing.
 4. **Edit** mode adds subject and body boxes above the form. Fields are added to the form as you add placeholders. The preview is rendered locally and is approximate: Notify's own preview is authoritative.
 5. To publish a draft, use **Copy subject** and **Copy body**, then **Open in Notify** and paste them into the template there. **Show diff** compares the draft with Notify's version, and **Revert to Notify version** discards the draft.
@@ -49,7 +49,7 @@ The products, with the vault and secret of each, are built in (`src/notify/produ
 ]
 ```
 
-Set `NOTIFY_API_URL` in the environment VS Code starts in to use another Notify API.
+Set `HMCTS_TEMPLATE_PREVIEW_NOTIFY_URL` in the environment VS Code starts in to use another Notify API, such as a local stub. The side view then names that API in its status line.
 
 ## The docmosis command in the terminal
 

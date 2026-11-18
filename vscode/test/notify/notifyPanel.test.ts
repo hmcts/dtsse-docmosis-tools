@@ -30,7 +30,7 @@ interface Call {
 function setUp(delay = 0) {
   const root = mkdtempSync(join(tmpdir(), 'tp-notify-'));
   resetStub(root);
-  process.env.NOTIFY_API_URL = 'https://notify.test';
+  process.env.HMCTS_TEMPLATE_PREVIEW_NOTIFY_URL = 'https://notify.test';
   const calls: Call[] = [];
   vi.stubGlobal('fetch', async (url: string, init: RequestInit) => {
     const path = url.replace('https://notify.test', '');
@@ -61,7 +61,7 @@ function setUp(delay = 0) {
   const panels = new NotifyPanels(context, output, service);
   const sidebar = new NotifySidebar(context, output, service, panels);
   const folder = join(root, '.hmcts-template-preview', 'notify', 'sptribs', TEMPLATE.id);
-  return { root, calls, reads, service, panels, sidebar, folder };
+  return { root, calls, reads, service, panels, sidebar, folder, context, output };
 }
 
 async function until(condition: () => boolean, what: string): Promise<void> {
@@ -86,7 +86,7 @@ async function opened(env: ReturnType<typeof setUp>): Promise<FakePanel> {
 describe('Notify editor panel', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
-    delete process.env.NOTIFY_API_URL;
+    delete process.env.HMCTS_TEMPLATE_PREVIEW_NOTIFY_URL;
   });
 
   it('opens a template from the side view and previews it through Notify', async () => {
@@ -184,6 +184,91 @@ describe('Notify editor panel', () => {
     expect(stub.opened[0]).toBe(`https://www.notifications.service.gov.uk/services/${SERVICE}/templates/${TEMPLATE.id}`);
   });
 
+  it('previews with the key read again after the keys are forgotten', async () => {
+    const env = setUp();
+    const panel = await opened(env);
+    env.service.forgetKeys();
+    panel.send({ type: 'preview', id: 1, data: { name: 'Ann' } });
+    await until(() => posted(panel, 'preview').length > 0, 'the preview');
+    expect(env.reads).toEqual(['sptribs-aat/uk-gov-notify-api-key', 'sptribs-aat/uk-gov-notify-api-key']);
+  });
+
+  it('signs with a rotated key once the old one is forgotten', async () => {
+    const env = setUp();
+    const rotated = '26785a09-ab16-4eb0-8407-a37497a57599';
+    let key = KEY;
+    const service = new NotifyService(new KeyStore(async () => key));
+    const panels = new NotifyPanels(env.context, env.output, service);
+    panels.open(service.product('sptribs')!, { id: TEMPLATE.id, name: 'x' });
+    const panel = stub.panels.at(-1)!;
+    panel.send({ type: 'ready' });
+    await until(() => posted(panel, 'init').length > 0, 'init');
+    key = `rotated-${rotated}-${KEY.slice(-36)}`;
+    service.forgetKeys();
+    panel.send({ type: 'preview', id: 1, data: {} });
+    await until(() => posted(panel, 'preview').length > 0, 'the preview');
+    const call = env.calls.find((c) => c.method === 'POST')!;
+    expect((JSON.parse(Buffer.from(call.token.slice(7).split('.')[1]!, 'base64url').toString()) as { iss: string }).iss).toBe(rotated);
+  });
+
+  it('loads again when a template that failed to load is reopened or retried', async () => {
+    const env = setUp();
+    let fail = true;
+    const service = new NotifyService(new KeyStore(async () => (fail ? Promise.reject(new Error('az is signed out')) : KEY)));
+    const panels = new NotifyPanels(env.context, env.output, service);
+    const product = service.product('sptribs')!;
+    panels.open(product, { id: TEMPLATE.id, name: 'x' });
+    const panel = stub.panels.at(-1)!;
+    panel.send({ type: 'ready' });
+    await until(() => posted(panel, 'loadError').length > 0, 'the error');
+
+    panels.open(product, { id: TEMPLATE.id, name: 'x' });
+    await until(() => posted(panel, 'loadError').length > 1, 'the second error');
+    expect(stub.panels).toHaveLength(1);
+    expect(panel.revealed).toBe(1);
+
+    fail = false;
+    panel.send({ type: 'retry' });
+    await until(() => posted(panel, 'init').length > 0, 'init after the retry');
+    expect(panel.title).toBe('Notify: Hearing notice');
+
+    panels.open(product, { id: TEMPLATE.id, name: 'x' });
+    await sleep(50);
+    expect(posted(panel, 'init')).toHaveLength(1);
+  });
+
+  it('keeps a revert sent while a draft save is in flight', async () => {
+    const env = setUp();
+    const panel = await opened(env);
+    for (let i = 0; i < 20; i++) {
+      panel.send({ type: 'saveDraft', subject: TEMPLATE.subject, body: `changed ${i}` });
+      panel.send({ type: 'discardDraft' });
+      await until(() => posted(panel, 'info').length > i, 'the revert');
+      await sleep(5);
+      expect(existsSync(join(env.folder, 'draft.json'))).toBe(false);
+    }
+  });
+
+  it('opens a template without waiting for its product’s template list', async () => {
+    const env = setUp();
+    vi.stubGlobal('fetch', async (url: string) =>
+      url.endsWith('/v2/templates') ? new Response('down', { status: 500 }) : Response.json(TEMPLATE),
+    );
+    await env.sidebar.openTemplate('sptribs', TEMPLATE.id);
+    const panel = stub.panels.at(-1)!;
+    expect(panel.title).toBe(`Notify: ${TEMPLATE.id}`);
+    panel.send({ type: 'ready' });
+    await until(() => posted(panel, 'init').length > 0, 'init');
+    expect(panel.title).toBe('Notify: Hearing notice');
+  });
+
+  it('titles a new panel with the template name when the list is already loaded', async () => {
+    const env = setUp();
+    await env.service.templates(env.service.product('sptribs')!);
+    await env.sidebar.openTemplate('sptribs', TEMPLATE.id);
+    expect(stub.panels.at(-1)!.title).toBe('Notify: Hearing notice');
+  });
+
   it('shows why the key could not be read', async () => {
     const env = setUp();
     env.service.keys.forget();
@@ -201,7 +286,7 @@ describe('Notify editor panel', () => {
 describe('Notify side view', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
-    delete process.env.NOTIFY_API_URL;
+    delete process.env.HMCTS_TEMPLATE_PREVIEW_NOTIFY_URL;
   });
 
   function resolved(env: ReturnType<typeof setUp>) {
@@ -232,10 +317,39 @@ describe('Notify side view', () => {
     expect(env.calls.filter((c) => c.path === '/v2/templates')).toHaveLength(2);
     expect(env.reads).toHaveLength(1);
 
-    view.send({ type: 'forgetKey' });
+    env.sidebar.forgetKey();
     await until(() => posted(view, 'status').length > 0, 'the status');
     view.send({ type: 'refresh' });
     await until(() => posted(view, 'templates').length > 2, 'the reload');
     expect(env.reads).toHaveLength(2);
+  });
+
+  it('shows the Notify API the extension was pointed at', async () => {
+    const env = setUp();
+    const view = resolved(env);
+    view.send({ type: 'ready' });
+    view.send({ type: 'selectProduct', product: 'sptribs' });
+    await until(() => posted(view, 'templates').length > 0, 'templates');
+    expect(posted(view, 'templates')[0]!.status).toContain('Using the Notify API at https://notify.test');
+  });
+
+  it('lists the products again when the setting changes', async () => {
+    const env = setUp();
+    const view = resolved(env);
+    view.send({ type: 'ready' });
+    view.send({ type: 'selectProduct', product: 'sptribs' });
+    await until(() => posted(view, 'templates').length > 0, 'templates');
+
+    stub.settings['notify.products'] = [{ id: 'extra', label: 'Extra', vault: 'extra-aat', secret: 'notify-key' }];
+    stub.configListeners.at(-1)!({ affectsConfiguration: (section) => section === 'hmctsTemplatePreview.notify.products' });
+    await until(() => posted(view, 'init').length > 1, 'the new list');
+    const init = posted(view, 'init')[1] as unknown as { products: { id: string }[]; selected?: string };
+    expect(init.products.some((p) => p.id === 'extra')).toBe(true);
+    expect(init.selected).toBe('sptribs');
+
+    stub.settings['notify.products'] = [{ id: 'sptribs', label: 'SPTribs', vault: 'other-aat', secret: 'notify-key' }];
+    stub.configListeners.at(-1)!({ affectsConfiguration: () => true });
+    await until(() => posted(view, 'templates').length > 1, 'the templates with the new key');
+    expect(env.reads).toEqual(['sptribs-aat/uk-gov-notify-api-key', 'other-aat/notify-key']);
   });
 });

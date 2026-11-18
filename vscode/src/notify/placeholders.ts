@@ -54,12 +54,17 @@ export function personalisationSchema(placeholders: Placeholder[]): ObjectSchema
   return { kind: 'object', controls: [], notes: [], properties };
 }
 
+/** The key in `data` matching the placeholder the way Notify matches it, or the name when no key does. */
+export function dataKey(data: JsonObject, name: string): string {
+  if (Object.hasOwn(data, name)) return name;
+  const key = placeholderKey(name);
+  return Object.keys(data).find((k) => placeholderKey(k) === key) ?? name;
+}
+
 /** Looks a value up the way Notify does, so `First name` finds data saved as `first_name`. */
 export function lookup(data: JsonObject, name: string): Json | undefined {
-  if (name in data) return data[name];
-  const key = placeholderKey(name);
-  for (const [k, v] of Object.entries(data)) if (placeholderKey(k) === key) return v;
-  return undefined;
+  const key = dataKey(data, name);
+  return Object.hasOwn(data, key) ? data[key] : undefined;
 }
 
 /** Notify shows conditional text for these values. */
@@ -71,6 +76,17 @@ export function isYes(value: Json | undefined): boolean {
 export const asText = (value: Json): string => (typeof value === 'object' && value !== null ? JSON.stringify(value) : String(value));
 
 export const isBlank = (value: Json | undefined) => value === undefined || value === null || value === '' || (Array.isArray(value) && value.length === 0);
+
+/** The values the personalisation form shows, keyed by placeholder name and read as the previews read them. */
+export function formValues(placeholders: Placeholder[], data: JsonObject): JsonObject {
+  const values: JsonObject = {};
+  for (const p of placeholders) {
+    const value = lookup(data, p.name);
+    if (p.conditional) values[p.name] = isYes(value);
+    else if (!isBlank(value)) values[p.name] = asText(value!);
+  }
+  return values;
+}
 
 /**
  * The personalisation to send to Notify's preview. Notify refuses a preview with any placeholder

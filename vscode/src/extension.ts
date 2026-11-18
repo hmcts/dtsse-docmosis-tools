@@ -32,6 +32,7 @@ function activateNotify(context: vscode.ExtensionContext, output: vscode.OutputC
   const sidebar = new NotifySidebar(context, output, service, panels);
   context.subscriptions.push(
     panels,
+    sidebar,
     vscode.workspace.registerTextDocumentContentProvider(DIFF_SCHEME, panels.documents),
     vscode.window.registerWebviewViewProvider(PICKER_VIEW_ID, sidebar, { webviewOptions: { retainContextWhenHidden: true } }),
     vscode.commands.registerCommand('hmctsTemplatePreview.notify.refresh', () => sidebar.refresh()),

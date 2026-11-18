@@ -26,6 +26,25 @@ describe('notifyMarkdown', () => {
     );
   });
 
+  it('links URLs in quotes without the quotes', () => {
+    expect(notifyMarkdown('Go to "https://x.com" now')).toBe('<p>Go to &quot;<a href="https://x.com">https://x.com</a>&quot; now</p>');
+  });
+
+  it('keeps placeholders in URLs and link text inside one link', () => {
+    expect(notifyMarkdown('See https://x.com/cases/((case id)).')).toBe(
+      '<p>See <a href="https://x.com/cases/((case id))">https://x.com/cases/<span class="placeholder">((case id))</span></a>.</p>',
+    );
+    expect(notifyMarkdown('[View ((case id))](https://x.com/((case id))?a=1&b=2)')).toBe(
+      '<p><a href="https://x.com/((case id))?a=1&amp;b=2">View <span class="placeholder">((case id))</span></a></p>',
+    );
+  });
+
+  it('escapes link text and a placeholder that looks like markup', () => {
+    expect(notifyMarkdown('[<b>](https://x.com) ((<i>))')).toBe(
+      '<p><a href="https://x.com">&lt;b&gt;</a> <span class="placeholder">((&lt;i&gt;))</span></p>',
+    );
+  });
+
   it('marks placeholders left unfilled', () => {
     expect(notifyMarkdown('Dear ((name))')).toBe('<p>Dear <span class="placeholder">((name))</span></p>');
   });
@@ -58,6 +77,17 @@ describe('smsCount', () => {
   it('counts Unicode messages at 70, then 67 per part', () => {
     expect(smsCount('ŵ'.repeat(70))).toEqual({ characters: 70, fragments: 1, unicode: true });
     expect(smsCount('ŵ'.repeat(71))).toEqual({ characters: 71, fragments: 2, unicode: true });
+  });
+
+  it('counts the characters Notify swaps for GSM ones as GSM', () => {
+    expect(smsCount('It’s “done” – see…')).toEqual({ characters: 20, fragments: 1, unicode: false });
+    expect(smsCount('a\u00a0b\tc\u200bd')).toEqual({ characters: 6, fragments: 1, unicode: false });
+    expect(smsCount('‘'.repeat(161))).toEqual({ characters: 161, fragments: 2, unicode: false });
+    expect(smsCount('a\u2011b\u2212c\u201ad\u201ee\u202ff\u2028g')).toEqual({ characters: 12, fragments: 1, unicode: false });
+  });
+
+  it('counts a zero width joiner as Unicode, as Notify does for text messages', () => {
+    expect(smsCount('a\u200db').unicode).toBe(true);
   });
 
   it('counts an empty message as none', () => {

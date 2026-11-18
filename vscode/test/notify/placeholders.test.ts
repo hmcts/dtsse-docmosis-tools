@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { apiPersonalisation, findPlaceholders, isYes, lookup, personalisationSchema, placeholderKey } from '../../src/notify/placeholders';
+import { apiPersonalisation, dataKey, findPlaceholders, formValues, isYes, lookup, personalisationSchema, placeholderKey } from '../../src/notify/placeholders';
 
 describe('findPlaceholders', () => {
   it('finds plain and conditional placeholders in the subject and body, in order', () => {
@@ -62,5 +62,26 @@ describe('lookup and isYes', () => {
   it('counts true, yes, y and 1 as yes', () => {
     expect([true, 'yes', 'Y', 'true', '1'].every(isYes)).toBe(true);
     expect([false, 'no', '', undefined, 'maybe'].some(isYes)).toBe(false);
+  });
+});
+
+describe('the personalisation form', () => {
+  const placeholders = findPlaceholders('Dear ((First name)), case ((case_ref)). ((remote??By video.)) ((items))');
+
+  it('shows saved data the way the previews read it', () => {
+    expect(formValues(placeholders, { first_name: 'Ann', 'CASE-REF': 123, Remote: 'yes', items: ['a', 'b'] })).toEqual({
+      'First name': 'Ann',
+      case_ref: '123',
+      remote: true,
+      items: '["a","b"]',
+    });
+    expect(formValues(placeholders, { remote: 'no' })).toEqual({ remote: false });
+  });
+
+  it('edits the key the data already has for a placeholder', () => {
+    expect(dataKey({ first_name: 'Ann' }, 'First name')).toBe('first_name');
+    expect(dataKey({ 'First name': 'Ann', first_name: 'Bob' }, 'First name')).toBe('First name');
+    expect(dataKey({}, 'First name')).toBe('First name');
+    expect(lookup({}, 'constructor')).toBeUndefined();
   });
 });
