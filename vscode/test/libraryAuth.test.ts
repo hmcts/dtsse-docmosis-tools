@@ -8,6 +8,12 @@ describe('GitHub token', () => {
     expect(await resolveToken({ session: () => Promise.reject(new Error('no')), gh: async () => undefined })).toBeUndefined();
   });
 
+  it('passes over tokens GitHub rejected', async () => {
+    const providers = { session: async () => 'revoked', gh: async () => 'cli' };
+    expect(await resolveToken(providers, new Set(['revoked']))).toEqual({ value: 'cli', source: 'gh' });
+    expect(await resolveToken(providers, new Set(['revoked', 'cli']))).toBeUndefined();
+  });
+
   it("reads gh's token, and gives up quietly when gh is missing or signed out", async () => {
     const args: string[][] = [];
     const ok = await ghToken((file, a, _options, callback) => {

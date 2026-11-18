@@ -3,8 +3,8 @@ import { normalisePath, parseLibraries } from '../src/library/config';
 
 describe('template library settings', () => {
   it('defaults to no libraries', () => {
-    expect(parseLibraries(undefined)).toEqual({ libraries: [], errors: [] });
-    expect(parseLibraries([])).toEqual({ libraries: [], errors: [] });
+    expect(parseLibraries(undefined)).toEqual({ libraries: [], errors: [], warnings: [] });
+    expect(parseLibraries([])).toEqual({ libraries: [], errors: [], warnings: [] });
   });
 
   it('reads repo, ref, path and label', () => {
@@ -35,8 +35,21 @@ describe('template library settings', () => {
     expect(errors[0]).toMatch(/^entry 1:/);
   });
 
-  it('drops a repeated library', () => {
-    expect(parseLibraries([{ repo: 'acme/letters' }, { repo: 'Acme/Letters' }]).libraries).toHaveLength(1);
+  it('drops a repeated library and says so', () => {
+    const { libraries, errors, warnings } = parseLibraries([{ repo: 'acme/letters', path: 'forms' }, { repo: 'Acme/Letters', path: '/forms/' }]);
+    expect(libraries).toHaveLength(1);
+    expect(errors).toEqual([]);
+    expect(warnings).toEqual(['entry 2 repeats entry 1 (same repo, ref and path), so it is ignored']);
+  });
+
+  it('treats refs and paths as case-sensitive, unlike owner and repo', () => {
+    const { libraries, warnings } = parseLibraries([
+      { repo: 'acme/letters', ref: 'Release', path: 'Forms' },
+      { repo: 'acme/letters', ref: 'release', path: 'Forms' },
+      { repo: 'acme/letters', ref: 'Release', path: 'forms' },
+    ]);
+    expect(warnings).toEqual([]);
+    expect(libraries.map((l) => l.id)).toEqual(['acme/letters@Release:Forms', 'acme/letters@release:Forms', 'acme/letters@Release:forms']);
   });
 
   it('rejects a setting that is not an array', () => {

@@ -56,10 +56,10 @@ export class GitHubClient {
   ) {}
 
   /** Resolves `ref` (or the default branch) to a commit sha, or reports that it matches `etag`. */
-  async commit(owner: string, repo: string, ref: string | undefined, etag?: string, signal?: AbortSignal): Promise<CommitCheck> {
+  async commit(owner: string, repo: string, ref: string | undefined, etag?: string): Promise<CommitCheck> {
     const headers: Record<string, string> = { accept: 'application/vnd.github.sha' };
     if (etag) headers['if-none-match'] = etag;
-    const response = await this.request(`/repos/${owner}/${repo}/commits/${encodeURIComponent(ref ?? 'HEAD')}`, headers, `${owner}/${repo}`, signal);
+    const response = await this.request(`/repos/${owner}/${repo}/commits/${encodeURIComponent(ref ?? 'HEAD')}`, headers, `${owner}/${repo}`);
     if (response.status === 304) return { modified: false };
     return { modified: true, sha: (await response.text()).trim(), etag: response.headers.get('etag') ?? undefined };
   }
@@ -70,8 +70,8 @@ export class GitHubClient {
     return (await response.json()) as Tree;
   }
 
-  async blob(owner: string, repo: string, sha: string, signal?: AbortSignal): Promise<Uint8Array> {
-    const response = await this.request(`/repos/${owner}/${repo}/git/blobs/${sha}`, { accept: 'application/vnd.github.raw' }, `${owner}/${repo}`, signal);
+  async blob(owner: string, repo: string, sha: string): Promise<Uint8Array> {
+    const response = await this.request(`/repos/${owner}/${repo}/git/blobs/${sha}`, { accept: 'application/vnd.github.raw' }, `${owner}/${repo}`);
     return new Uint8Array(await response.arrayBuffer());
   }
 
@@ -79,15 +79,15 @@ export class GitHubClient {
    * Every template under `prefix` at commit `sha`. One recursive tree call covers most repos;
    * when GitHub truncates it, walks the folders under `prefix` one tree at a time.
    */
-  async templates(owner: string, repo: string, sha: string, prefix: string, signal?: AbortSignal): Promise<Template[]> {
-    const full = await this.tree(owner, repo, sha, true, signal);
+  async templates(owner: string, repo: string, sha: string, prefix: string): Promise<Template[]> {
+    const full = await this.tree(owner, repo, sha, true);
     if (!full.truncated) return toTemplates(full.tree, '', prefix);
 
-    let root = await this.tree(owner, repo, sha, false, signal);
+    let root = await this.tree(owner, repo, sha, false);
     for (const part of prefix ? prefix.split('/') : []) {
       const next = root.tree.find((entry) => entry.type === 'tree' && entry.path === part);
       if (!next) return [];
-      root = await this.tree(owner, repo, next.sha, false, signal);
+      root = await this.tree(owner, repo, next.sha, false);
     }
 
     const found: Template[] = [];
@@ -99,9 +99,18 @@ export class GitHubClient {
       found.push(...toTemplates(listing.tree, base, prefix));
     };
     visit(root, prefix);
+    // The first failure fails the walk: the other workers stop taking folders and their requests are cancelled.
+    const stop = new AbortController();
     const worker = async (): Promise<void> => {
-      for (let item = queue.shift(); item; item = queue.shift()) {
-        visit(await this.tree(owner, repo, item.sha, false, signal), item.base);
+      try {
+        while (!stop.signal.aborted) {
+          const item = queue.shift();
+          if (!item) return;
+          visit(await this.tree(owner, repo, item.sha, false, stop.signal), item.base);
+        }
+      } catch (error) {
+        stop.abort();
+        throw error;
       }
     };
     // Workers that find the queue empty exit early, so keep starting them while folders are queued.
@@ -154,9 +163,10 @@ export function errorFor(response: Response, repo: string): GitHubError {
   }
 
   if (status === 429 || (status === 403 && (headers.get('x-ratelimit-remaining') === '0' || headers.has('retry-after')))) {
-    const reset = Number(headers.get('x-ratelimit-reset'));
+    // retry-after comes with a secondary limit, which applies even when the primary limit has requests left.
     const retry = Number(headers.get('retry-after'));
-    const resetAt = Number.isFinite(reset) && reset > 0 ? new Date(reset * 1000) : Number.isFinite(retry) && retry > 0 ? new Date(Date.now() + retry * 1000) : undefined;
+    const reset = Number(headers.get('x-ratelimit-reset'));
+    const resetAt = Number.isFinite(retry) && retry > 0 ? new Date(Date.now() + retry * 1000) : Number.isFinite(reset) && reset > 0 ? new Date(reset * 1000) : undefined;
     return new GitHubError(
       'rateLimited',
       `GitHub's rate limit is used up${resetAt ? `; it resets at ${resetAt.toLocaleTimeString()}` : ''}.`,

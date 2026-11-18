@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { GitHubClient, GitHubError, isTemplate } from '../src/library/github';
-import { blobEntry, fakeFetch, json, treeEntry } from './libraryFakes';
+import { blobEntry, fakeFetch, gate, json, treeEntry } from './libraryFakes';
 
 const COMMIT = 'c0ffee0000000000000000000000000000000000';
 
@@ -73,6 +73,16 @@ describe('GitHub client', () => {
     expect(second.kind).toBe('rateLimited');
   });
 
+  it('prefers retry-after to the primary reset when GitHub sends both', async () => {
+    const reset = Math.floor(Date.now() / 1000) + 3600;
+    const both = () => new Response('', { status: 403, headers: { 'retry-after': '60', 'x-ratelimit-remaining': '4000', 'x-ratelimit-reset': String(reset) } });
+    const before = Date.now();
+    const error = await failure(new GitHubClient(fakeFetch({ '/repos/acme/letters/commits/HEAD': both }), 'tok').commit('acme', 'letters', undefined));
+    expect(error.kind).toBe('rateLimited');
+    expect(error.resetAt!.getTime()).toBeGreaterThanOrEqual(before + 60_000);
+    expect(error.resetAt!.getTime()).toBeLessThan(before + 120_000);
+  });
+
   it('maps a fetch failure to a network error', async () => {
     const fetch = async () => {
       throw new TypeError('fetch failed');
@@ -120,6 +130,28 @@ describe('GitHub client', () => {
     const templates = await new GitHubClient(fetch, 'tok').templates('acme', 'letters', COMMIT, 'forms');
     expect(templates.map((t) => t.path)).toEqual(['forms/A.docx', 'forms/more/C.docx', 'forms/sub/B.docx', 'forms/sub/deep/D.docx']);
     expect(fetch.calls.map((c) => c.url)).not.toContain('https://api.github.com/repos/acme/letters/git/trees/t-other');
+  });
+
+  it('stops walking a truncated tree at the first failure', async () => {
+    const folders = Array.from({ length: 20 }, (_, i) => `f${i}`);
+    const held = gate();
+    const fetch = fakeFetch({
+      [`/repos/acme/letters/git/trees/${COMMIT}?recursive=1`]: () => json({ sha: 'root', truncated: true, tree: [] }),
+      [`/repos/acme/letters/git/trees/${COMMIT}`]: () => json({ sha: 'root', truncated: false, tree: folders.map((f) => treeEntry(f, `t-${f}`)) }),
+      '/repos/acme/letters/git/trees/t-f0': () => new Response('', { status: 500, statusText: 'Server Error' }),
+      ...Object.fromEntries(
+        folders.slice(1).map((f) => [`/repos/acme/letters/git/trees/t-${f}`, async () => (await held.wait, json({ sha: `t-${f}`, truncated: false, tree: [] }))]),
+      ),
+    });
+    const walk = new GitHubClient(fetch, 'tok').templates('acme', 'letters', COMMIT, '');
+    const error = await failure(walk);
+    expect(error.status).toBe(500);
+    const started = fetch.calls.filter((c) => /trees\/t-f\d+$/.test(c.url));
+    expect(started.slice(1).every((c) => c.signal?.aborted)).toBe(true);
+    held.open();
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(fetch.calls.filter((c) => /trees\/t-f\d+$/.test(c.url))).toHaveLength(started.length);
+    expect(started.length).toBeLessThanOrEqual(8);
   });
 
   it('lists nothing when the folder is missing from a truncated tree', async () => {

@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { parseLibraries } from '../src/library/config';
 import { GitHubClient } from '../src/library/github';
 import { IndexStore, MIN_CHECK_INTERVAL_MS } from '../src/library/indexStore';
-import { blobEntry, fakeFetch, json } from './libraryFakes';
+import { blobEntry, fakeFetch, gate, json, unauthorized } from './libraryFakes';
 
 const [library] = parseLibraries([{ repo: 'acme/letters', path: 'forms' }]).libraries;
 
@@ -102,6 +102,49 @@ describe('template index store', () => {
     const [a, b] = await Promise.all([store.revalidate(library!, client), store.revalidate(library!, client)]);
     expect(a).toBe(b);
     expect(fetch.calls).toHaveLength(2);
+  });
+
+  it('runs a forced check of its own when a non-forced one is in flight', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'tp-index-'));
+    const held = gate();
+    let commits = 0;
+    const fetch = fakeFetch({
+      '/repos/acme/letters/commits/HEAD': async () => {
+        commits++;
+        if (commits === 1) await held.wait;
+        return new Response(`c${commits}`, { headers: { etag: `"c${commits}"` } });
+      },
+      '/repos/acme/letters/git/trees/c1?recursive=1': () => json({ sha: 't1', truncated: false, tree: [blobEntry('forms/A.docx', 'a')] }),
+      '/repos/acme/letters/git/trees/c2?recursive=1': () => json({ sha: 't2', truncated: false, tree: [blobEntry('forms/A.docx', 'a2')] }),
+    });
+    const client = new GitHubClient(fetch, 'tok');
+    const store = new IndexStore(dir);
+    const background = store.revalidate(library!, client);
+    const refresh = store.revalidate(library!, client, { force: true });
+    expect(refresh).not.toBe(background);
+    expect(store.revalidate(library!, client)).toBe(refresh);
+    held.open();
+    expect((await background).index.commit).toBe('c1');
+    expect((await refresh).index.commit).toBe('c2');
+    expect(commits).toBe(2);
+  });
+
+  it("doesn't hand a caller with a new token the in-flight result of the old one", async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'tp-index-'));
+    const held = gate();
+    const fetch = fakeFetch({
+      '/repos/acme/letters/commits/HEAD': async ({ headers }) => {
+        if (headers.authorization === 'Bearer old') return (await held.wait, unauthorized());
+        return new Response('c1', { headers: { etag: '"c1"' } });
+      },
+      '/repos/acme/letters/git/trees/c1?recursive=1': () => json({ sha: 't1', truncated: false, tree: [blobEntry('forms/A.docx', 'a')] }),
+    });
+    const store = new IndexStore(dir);
+    const before = store.revalidate(library!, new GitHubClient(fetch, 'old'));
+    const after = store.revalidate(library!, new GitHubClient(fetch, 'new'));
+    held.open();
+    await expect(before).rejects.toMatchObject({ kind: 'unauthorized' });
+    expect(await after).toMatchObject({ checked: true, changed: true });
   });
 
   it('ignores a saved listing for a different library', async () => {

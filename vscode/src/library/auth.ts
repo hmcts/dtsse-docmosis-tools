@@ -13,12 +13,15 @@ export interface TokenProviders {
   gh(): Promise<string | undefined>;
 }
 
-/** The first token available: VS Code's GitHub session, then the GitHub CLI's login. */
-export async function resolveToken(providers: TokenProviders): Promise<Token | undefined> {
+/**
+ * The first token available: VS Code's GitHub session, then the GitHub CLI's login. Tokens in
+ * `rejected`, which GitHub answered 401 for, are passed over, so a revoked session falls through to `gh`.
+ */
+export async function resolveToken(providers: TokenProviders, rejected: ReadonlySet<string> = new Set()): Promise<Token | undefined> {
   const fromSession = await providers.session().catch(() => undefined);
-  if (fromSession) return { value: fromSession, source: 'vscode' };
+  if (fromSession && !rejected.has(fromSession)) return { value: fromSession, source: 'vscode' };
   const fromGh = await providers.gh().catch(() => undefined);
-  if (fromGh) return { value: fromGh, source: 'gh' };
+  if (fromGh && !rejected.has(fromGh)) return { value: fromGh, source: 'gh' };
   return undefined;
 }
 

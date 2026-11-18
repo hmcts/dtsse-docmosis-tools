@@ -28,11 +28,11 @@ export interface Revalidation {
 /** The persisted template listing of each library, rechecked against the ref's commit. */
 export class IndexStore {
   private readonly memory = new Map<string, LibraryIndex>();
-  private readonly inFlight = new Map<string, Promise<Revalidation>>();
+  private readonly inFlight = new Map<string, { promise: Promise<Revalidation>; client: GitHubClient; force: boolean }>();
 
   constructor(
     private readonly dir: string,
-    private readonly now: () => number = Date.now,
+    private readonly now: () => number = () => Date.now(),
   ) {}
 
   file(id: string): string {
@@ -48,13 +48,24 @@ export class IndexStore {
     return stored;
   }
 
-  /** Rechecks the ref unless it was checked within `minIntervalMs`; refetches the listing only when the commit changed. */
+  /**
+   * Rechecks the ref unless it was checked within `minIntervalMs`; refetches the listing only when the commit changed.
+   * A call joins a check already running with the same client, unless it is forced and that one isn't. Otherwise it
+   * runs after that check, so a forced Refresh, or a new token after signing in, gets a result of its own.
+   */
   revalidate(library: LibraryConfig, client: GitHubClient, options: { force?: boolean; minIntervalMs?: number } = {}): Promise<Revalidation> {
+    const force = options.force ?? false;
     const running = this.inFlight.get(library.id);
-    if (running) return running;
-    const work = this.run(library, client, options).finally(() => this.inFlight.delete(library.id));
-    this.inFlight.set(library.id, work);
-    return work;
+    if (running && running.client === client && (running.force || !force)) return running.promise;
+    const after = running ? running.promise.then(noop, noop) : Promise.resolve();
+    const entry = { client, force, promise: undefined as unknown as Promise<Revalidation> };
+    entry.promise = after
+      .then(() => this.run(library, client, options))
+      .finally(() => {
+        if (this.inFlight.get(library.id) === entry) this.inFlight.delete(library.id);
+      });
+    this.inFlight.set(library.id, entry);
+    return entry.promise;
   }
 
   private async run(library: LibraryConfig, client: GitHubClient, options: { force?: boolean; minIntervalMs?: number }): Promise<Revalidation> {
@@ -83,6 +94,8 @@ export class IndexStore {
     await writeAtomic(this.file(index.id), JSON.stringify(index));
   }
 }
+
+const noop = (): void => undefined;
 
 function isIndex(value: unknown): value is LibraryIndex {
   if (typeof value !== 'object' || value === null) return false;

@@ -37,6 +37,10 @@ interface Listing {
   map: FolderMap;
 }
 
+class SignInNeeded extends Error {}
+
+const isUnauthorized = (error: unknown): boolean => error instanceof GitHubError && error.kind === 'unauthorized';
+
 /** The Templates view: lists the configured libraries' templates and opens them in the preview. */
 export class TemplateLibraryView implements vscode.TreeDataProvider<Node>, vscode.Disposable {
   private readonly changed = new vscode.EventEmitter<Node | undefined>();
@@ -47,12 +51,18 @@ export class TemplateLibraryView implements vscode.TreeDataProvider<Node>, vscod
   private readonly listings = new Map<string, Listing>();
   private readonly errors = new Map<string, Error>();
   private readonly failedAt = new Map<string, number>();
+  /** Concurrent runs can share one failed check; each failure is shown once. */
+  private readonly notified = new WeakSet<Error>();
+  /** Tokens GitHub answered 401 for, which the token lookup passes over. */
+  private readonly rejected = new Set<string>();
+  private readonly tokenOf = new WeakMap<GitHubClient, string>();
+  /** One client per token, so checks made with the same token share a run in the index store. */
+  private current: GitHubClient | undefined;
   private libraries: LibraryConfig[] = [];
   private configErrors: string[] = [];
   private token: Promise<Token | undefined> | undefined;
   private signedOut = false;
   private loading: Promise<void> | undefined;
-  private revalidating: Promise<void> | undefined;
   private started = false;
   private readonly view: vscode.TreeView<Node>;
 
@@ -117,7 +127,7 @@ export class TemplateLibraryView implements vscode.TreeDataProvider<Node>, vscod
       const item = new vscode.TreeItem(baseName(node.folder), vscode.TreeItemCollapsibleState.Collapsed);
       item.id = `${node.library.id}|folder|${node.folder}`;
       item.iconPath = vscode.ThemeIcon.Folder;
-      item.resourceUri = vscode.Uri.file(this.blobs.file(node.library.owner, node.library.repo, joinPath(node.library.path, node.folder)));
+      item.resourceUri = vscode.Uri.file(this.blobs.file(node.library, joinPath(node.library.path, node.folder)));
       item.contextValue = 'templateFolder';
       return item;
     }
@@ -127,7 +137,7 @@ export class TemplateLibraryView implements vscode.TreeDataProvider<Node>, vscod
     item.description = formatSize(template.size);
     item.tooltip = tooltip(library, template, this.listings.get(library.id)?.index);
     item.iconPath = vscode.ThemeIcon.File;
-    item.resourceUri = vscode.Uri.file(this.blobs.file(library.owner, library.repo, template.path));
+    item.resourceUri = vscode.Uri.file(this.blobs.file(library, template.path));
     item.contextValue = 'template';
     item.command = { command: COMMANDS.open, title: 'Preview template', arguments: [node] };
     return item;
@@ -165,16 +175,20 @@ export class TemplateLibraryView implements vscode.TreeDataProvider<Node>, vscod
     const parsed = parseLibraries(vscode.workspace.getConfiguration(SETTING_SECTION).get<unknown>(LIBRARIES_SETTING, []));
     this.libraries = parsed.libraries;
     this.configErrors = parsed.errors;
-    for (const error of parsed.errors) this.output.appendLine(`${SETTING_SECTION}.${LIBRARIES_SETTING}: ${error}`);
+    for (const problem of [...parsed.errors, ...parsed.warnings]) this.output.appendLine(`${SETTING_SECTION}.${LIBRARIES_SETTING}: ${problem}`);
+  }
+
+  private isConfigured(library: LibraryConfig): boolean {
+    return this.libraries.some((configured) => configured.id === library.id);
   }
 
   private reconfigure(): void {
     this.readConfig();
-    const ids = new Set(this.libraries.map((library) => library.id));
-    for (const id of [...this.listings.keys(), ...this.errors.keys()]) {
-      if (!ids.has(id)) {
+    for (const id of new Set([...this.listings.keys(), ...this.errors.keys(), ...this.failedAt.keys()])) {
+      if (!this.libraries.some((library) => library.id === id)) {
         this.listings.delete(id);
         this.errors.delete(id);
+        this.failedAt.delete(id);
       }
     }
     this.loading = undefined;
@@ -199,7 +213,9 @@ export class TemplateLibraryView implements vscode.TreeDataProvider<Node>, vscod
     return this.loading;
   }
 
+  /** Ignored for a library that has been removed from the settings since its check started. */
   private setListing(library: LibraryConfig, index: LibraryIndex): void {
+    if (!this.isConfigured(library)) return;
     const current = this.listings.get(library.id);
     if (current?.index.commit === index.commit && current.index.templates === index.templates) {
       current.index = index;
@@ -209,42 +225,70 @@ export class TemplateLibraryView implements vscode.TreeDataProvider<Node>, vscod
   }
 
   private getToken(): Promise<Token | undefined> {
-    this.token ??= resolveToken({
-      session: async () =>
-        (await vscode.authentication.getSession('github', GITHUB_SCOPES, { silent: true }))?.accessToken,
-      gh: this.deps.ghToken ?? (() => ghToken()),
-    });
+    this.token ??= resolveToken(
+      {
+        session: async () => (await vscode.authentication.getSession('github', GITHUB_SCOPES, { silent: true }))?.accessToken,
+        gh: this.deps.ghToken ?? (() => ghToken()),
+      },
+      this.rejected,
+    );
     return this.token;
   }
 
   private async client(): Promise<GitHubClient | undefined> {
     const token = await this.getToken();
     this.signedOut = !token;
-    return token ? new GitHubClient(this.deps.fetch ?? ((url, init) => globalThis.fetch(url, init)), token.value) : undefined;
+    if (!token) return undefined;
+    if (!this.current || this.tokenOf.get(this.current) !== token.value) {
+      this.current = new GitHubClient(this.deps.fetch ?? ((url, init) => globalThis.fetch(url, init)), token.value);
+      this.tokenOf.set(this.current, token.value);
+    }
+    return this.current;
+  }
+
+  /** Stops using a token GitHub answered 401 for, so the next lookup tries the other source. */
+  private reject(client: GitHubClient): void {
+    const token = this.tokenOf.get(client);
+    if (token) this.rejected.add(token);
+    if (this.current === client) this.current = undefined;
+    this.token = undefined;
+  }
+
+  /** Runs `work` with a client; after a 401, once more with the next token available. */
+  private async withClient<T>(work: (client: GitHubClient) => Promise<T>): Promise<T> {
+    const client = await this.client();
+    if (!client) throw new SignInNeeded();
+    try {
+      return await work(client);
+    } catch (error) {
+      if (!isUnauthorized(error)) throw error;
+      this.reject(client);
+      const next = await this.client();
+      if (!next) throw error;
+      try {
+        return await work(next);
+      } catch (retryError) {
+        if (isUnauthorized(retryError)) this.reject(next);
+        throw retryError;
+      }
+    }
   }
 
   /**
-   * Rechecks every library. `force` skips the minimum interval. Failures raise a notification when
-   * the user asked, or when there is no saved list to fall back on.
+   * Rechecks every library, or just `only`. `force` skips the minimum interval. Failures raise a
+   * notification when the user asked, or when there is no saved list to fall back on. Each call reads
+   * the libraries configured now; checks already running for them are joined in the index store.
    */
-  private revalidate(force: boolean, sessionsChanged = false): Promise<void> {
-    if (this.revalidating && !force && !sessionsChanged) return this.revalidating;
-    const run = this.runRevalidation(force, force || sessionsChanged).finally(() => {
-      if (this.revalidating === run) this.revalidating = undefined;
-    });
-    this.revalidating = run;
-    return run;
-  }
-
-  private async runRevalidation(force: boolean, retryFailed: boolean): Promise<void> {
+  private async revalidate(force: boolean, sessionsChanged = false, only?: LibraryConfig[]): Promise<void> {
+    const retryFailed = force || sessionsChanged;
     if (this.libraries.length === 0) {
       this.updateState();
       return;
     }
     await this.loadCached();
-    const due = retryFailed
-      ? this.libraries
-      : this.libraries.filter((library) => Date.now() - (this.failedAt.get(library.id) ?? 0) >= MIN_CHECK_INTERVAL_MS);
+    const due = (only ?? this.libraries).filter(
+      (library) => this.isConfigured(library) && (retryFailed || Date.now() - (this.failedAt.get(library.id) ?? 0) >= MIN_CHECK_INTERVAL_MS),
+    );
     if (due.length === 0) return;
     this.updateState('loading');
     if (retryFailed && this.signedOut) this.token = undefined;
@@ -254,31 +298,59 @@ export class TemplateLibraryView implements vscode.TreeDataProvider<Node>, vscod
       if (force) void this.offerSignIn('Sign in to GitHub to list the templates.');
       return;
     }
-    const failures = new Map<string, Error>();
-    const unlisted = new Set(this.libraries.filter((library) => !this.listings.has(library.id)).map((library) => library.id));
+    const unlisted = new Set(due.filter((library) => !this.listings.has(library.id)).map((library) => library.id));
+    let failures = await this.check(due, client, force);
+
+    const rejected = due.filter((library) => isUnauthorized(failures.get(library)));
+    if (rejected.length > 0) {
+      this.reject(client);
+      const next = await this.client();
+      if (next) {
+        const retried = await this.check(rejected, next, force);
+        for (const library of rejected) failures.delete(library);
+        failures = new Map([...failures, ...retried]);
+        if (rejected.some((library) => isUnauthorized(retried.get(library)))) {
+          this.reject(next);
+          this.signedOut = true;
+        }
+      }
+    }
+
+    const notify = new Map<string, Error>();
+    for (const [library, failure] of failures) {
+      if (!this.isConfigured(library)) continue;
+      this.errors.set(library.id, failure);
+      this.failedAt.set(library.id, Date.now());
+      if (force || unlisted.has(library.id)) notify.set(failure.message, failure);
+    }
+    this.refreshView();
+    for (const failure of notify.values()) {
+      if (this.notified.has(failure)) continue;
+      this.notified.add(failure);
+      void this.notify(failure);
+    }
+  }
+
+  /** Checks each library with `client`, recording the listings it gets, and returns the failures. */
+  private async check(libraries: LibraryConfig[], client: GitHubClient, force: boolean): Promise<Map<LibraryConfig, Error>> {
+    const failures = new Map<LibraryConfig, Error>();
     await Promise.all(
-      due.map(async (library) => {
+      libraries.map(async (library) => {
         try {
           const result = await this.store.revalidate(library, client, { force });
+          if (!this.isConfigured(library)) return;
           this.errors.delete(library.id);
           this.failedAt.delete(library.id);
           this.setListing(library, result.index);
           if (result.changed) this.output.appendLine(`${library.label}: ${result.index.templates.length} templates at ${result.index.commit.slice(0, 7)}`);
         } catch (error) {
           const failure = error instanceof Error ? error : new Error(String(error));
-          this.errors.set(library.id, failure);
-          this.failedAt.set(library.id, Date.now());
-          if (force || unlisted.has(library.id)) failures.set(failure.message, failure);
-          this.output.appendLine(`${library.label}: ${failure.message}`);
-          if (failure instanceof GitHubError && failure.kind === 'unauthorized') {
-            this.token = undefined;
-            this.signedOut = true;
-          }
+          failures.set(library, failure);
+          if (this.isConfigured(library)) this.output.appendLine(`${library.label}: ${failure.message}`);
         }
       }),
     );
-    this.refreshView();
-    for (const failure of failures.values()) void this.notify(failure);
+    return failures;
   }
 
   private refreshView(): void {
@@ -287,10 +359,11 @@ export class TemplateLibraryView implements vscode.TreeDataProvider<Node>, vscod
   }
 
   private updateState(override?: State): void {
-    const hasListing = this.libraries.some((library) => this.listings.has(library.id));
+    const listed = this.libraries.flatMap((library) => this.listings.get(library.id) ?? []);
+    const hasListing = listed.length > 0;
     let state: State;
     if (this.libraries.length === 0) state = 'noLibraries';
-    else if (hasListing) state = [...this.listings.values()].some((listing) => listing.index.templates.length > 0) ? 'ready' : 'empty';
+    else if (hasListing) state = listed.some((listing) => listing.index.templates.length > 0) ? 'ready' : 'empty';
     else if (this.signedOut) state = 'signedOut';
     else if (override) state = override;
     else if (this.libraries.every((library) => this.errors.has(library.id))) state = 'error';
@@ -309,6 +382,7 @@ export class TemplateLibraryView implements vscode.TreeDataProvider<Node>, vscod
   private async signIn(): Promise<void> {
     try {
       const session = await vscode.authentication.getSession('github', GITHUB_SCOPES, { createIfNone: true });
+      this.rejected.delete(session.accessToken);
       this.token = Promise.resolve({ value: session.accessToken, source: 'vscode' });
       this.signedOut = false;
     } catch (error) {
@@ -326,36 +400,54 @@ export class TemplateLibraryView implements vscode.TreeDataProvider<Node>, vscod
     const text = `HMCTS Template Preview: ${error.message}`;
     if (error instanceof GitHubError && error.kind === 'sso' && error.ssoUrl) {
       if ((await vscode.window.showErrorMessage(text, 'Authorise')) === 'Authorise') await vscode.env.openExternal(vscode.Uri.parse(error.ssoUrl));
-    } else if (error instanceof GitHubError && error.kind === 'unauthorized') {
+    } else if (isUnauthorized(error)) {
       if ((await vscode.window.showErrorMessage(text, 'Sign in to GitHub')) === 'Sign in to GitHub') await this.signIn();
     } else {
       void vscode.window.showErrorMessage(text);
     }
   }
 
-  /** Opens the cached copy when it holds the listed blob; otherwise downloads that blob first. */
+  private async download(library: LibraryConfig, template: Template): Promise<Uint8Array> {
+    return await vscode.window.withProgress(
+      {
+        location: this.view.visible ? { viewId: TEMPLATES_VIEW } : vscode.ProgressLocation.Notification,
+        title: `Downloading ${baseName(template.path)}`,
+      },
+      () => this.withClient((client) => client.blob(library.owner, library.repo, template.sha)),
+    );
+  }
+
+  /**
+   * Opens the cached copy when it holds the listed blob; otherwise downloads that blob first. When the
+   * library's list is older than the check interval, rechecks it alongside, and if the template has
+   * changed, downloads the new version over the file the preview has open.
+   */
   async open(library: LibraryConfig, template: Template): Promise<void> {
+    const checkedAt = this.listings.get(library.id)?.index.checkedAt ?? 0;
+    const recheck = Date.now() - checkedAt >= MIN_CHECK_INTERVAL_MS ? this.revalidate(false, false, [library]) : undefined;
     try {
-      let file = await this.blobs.cached(library.owner, library.repo, template);
-      if (!file) {
-        const client = await this.client();
-        if (!client) {
-          void this.offerSignIn(`Sign in to GitHub to download ${baseName(template.path)}.`);
-          return;
-        }
-        file = await vscode.window.withProgress(
-          {
-            location: this.view.visible ? { viewId: TEMPLATES_VIEW } : vscode.ProgressLocation.Notification,
-            title: `Downloading ${baseName(template.path)}`,
-          },
-          async () =>
-            (await this.blobs.ensure(library.owner, library.repo, template, () => client.blob(library.owner, library.repo, template.sha))).file,
-        );
-      }
+      const { file } = await this.blobs.ensure(library, template, () => this.download(library, template));
       await vscode.commands.executeCommand('vscode.openWith', vscode.Uri.file(file), VIEW_TYPE);
     } catch (error) {
+      if (error instanceof SignInNeeded) {
+        void this.offerSignIn(`Sign in to GitHub to download ${baseName(template.path)}.`);
+        return;
+      }
       this.output.appendLine(`Couldn't open ${library.owner}/${library.repo}/${template.path}: ${message(error)}`);
       await this.notify(error instanceof Error ? error : new Error(String(error)));
+      return;
+    }
+    if (recheck) void recheck.then(() => this.updateOpened(library, template));
+  }
+
+  private async updateOpened(library: LibraryConfig, opened: Template): Promise<void> {
+    if (!this.isConfigured(library)) return;
+    const latest = this.listings.get(library.id)?.index.templates.find((template) => template.path === opened.path);
+    if (!latest || latest.sha === opened.sha) return;
+    try {
+      await this.blobs.ensure(library, latest, () => this.download(library, latest));
+    } catch (error) {
+      this.output.appendLine(`Couldn't update ${library.owner}/${library.repo}/${latest.path}: ${message(error)}`);
     }
   }
 

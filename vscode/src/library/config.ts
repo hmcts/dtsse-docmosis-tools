@@ -15,6 +15,8 @@ export interface LibraryConfig {
 export interface ParsedLibraries {
   libraries: LibraryConfig[];
   errors: string[];
+  /** Usable entries left out because they repeat an earlier one. */
+  warnings: string[];
 }
 
 const OWNER = /^[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?$/;
@@ -30,10 +32,11 @@ export function normalisePath(value: string): string {
 export function parseLibraries(raw: unknown): ParsedLibraries {
   const libraries: LibraryConfig[] = [];
   const errors: string[] = [];
-  if (raw === undefined || raw === null) return { libraries, errors };
-  if (!Array.isArray(raw)) return { libraries, errors: ['expected an array of libraries'] };
+  const warnings: string[] = [];
+  if (raw === undefined || raw === null) return { libraries, errors, warnings };
+  if (!Array.isArray(raw)) return { libraries, errors: ['expected an array of libraries'], warnings };
 
-  const seen = new Set<string>();
+  const seen = new Map<string, number>();
   raw.forEach((item: unknown, index) => {
     const where = `entry ${index + 1}`;
     if (typeof item !== 'object' || item === null || Array.isArray(item)) {
@@ -58,11 +61,16 @@ export function parseLibraries(raw: unknown): ParsedLibraries {
       errors.push(`${where}: "path" can't contain ".."`);
       return;
     }
-    const id = `${owner}/${repo}@${ref ?? ''}:${folder}`.toLowerCase();
-    if (seen.has(id)) return;
-    seen.add(id);
+    // GitHub matches owner and repo names case-insensitively; refs and paths are case-sensitive.
+    const id = `${owner.toLowerCase()}/${repo.toLowerCase()}@${ref ?? ''}:${folder}`;
+    const first = seen.get(id);
+    if (first !== undefined) {
+      warnings.push(`${where} repeats entry ${first} (same repo, ref and path), so it is ignored`);
+      return;
+    }
+    seen.set(id, index + 1);
     const label = (entry.label as string | undefined)?.trim() || `${owner}/${repo}${folder ? `/${folder}` : ''}`;
     libraries.push({ id, owner, repo, ref, path: folder, label });
   });
-  return { libraries, errors };
+  return { libraries, errors, warnings };
 }
