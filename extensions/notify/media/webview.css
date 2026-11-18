@@ -9,9 +9,6 @@ body {
 .layout { display: grid; grid-template-columns: minmax(320px, 40%) 1fr; height: 100vh; }
 .left { overflow: auto; padding: 8px 12px; border-right: 1px solid var(--vscode-panel-border); }
 .right { min-width: 0; height: 100vh; }
-.pdf-scroll { height: 100%; overflow: auto; background: var(--vscode-editorWidget-background); }
-.pdf-pages { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 12px 0; }
-.pdf-page { background: #fff; box-shadow: 0 1px 4px var(--vscode-widget-shadow); }
 .placeholder { padding: 24px; color: var(--vscode-descriptionForeground); }
 h1 { font-size: 1.2em; margin: 8px 0 2px; }
 h3 { font-size: 1em; margin: 8px 0 4px; }
@@ -29,7 +26,6 @@ button.primary:hover { background: var(--vscode-button-hoverBackground); }
 button.secondary { color: var(--vscode-button-secondaryForeground); background: var(--vscode-button-secondaryBackground); }
 button.secondary:hover { background: var(--vscode-button-secondaryHoverBackground); }
 button.small { padding: 2px 8px; }
-.dev { display: inline-flex; align-items: center; gap: 4px; }
 .banner { padding: 6px 8px; margin: 6px 0; border-radius: 2px; white-space: pre-wrap; word-break: break-word; }
 .banner.error {
   color: var(--vscode-errorForeground);
@@ -46,24 +42,13 @@ button.small { padding: 2px 8px; }
   border: 1px solid var(--vscode-inputValidation-infoBorder);
 }
 [hidden] { display: none !important; }
-.data-path, .hint, .controls, .note { color: var(--vscode-descriptionForeground); font-size: 0.9em; }
-.hint { margin-left: 6px; }
-.coverage { margin: 8px 0; }
-.coverage ul { margin: 2px 0; padding-left: 20px; }
+.data-path, .controls, .note { color: var(--vscode-descriptionForeground); font-size: 0.9em; }
 .row { display: flex; flex-direction: column; gap: 2px; margin: 8px 0; }
 .row.boolean { flex-direction: row; flex-wrap: wrap; align-items: center; gap: 6px; }
 .row.boolean .controls, .row.boolean .note { flex-basis: 100%; }
-input[type=text], input[type=date] {
+input[type=text] {
   font: inherit; padding: 3px 6px; color: var(--vscode-input-foreground);
   background: var(--vscode-input-background); border: 1px solid var(--vscode-input-border, transparent);
 }
 input:focus-visible { outline: 1px solid var(--vscode-focusBorder); }
 code { font-family: var(--vscode-editor-font-family); color: var(--vscode-textPreformat-foreground); }
-.group { border: 1px solid var(--vscode-panel-border); margin: 10px 0; padding: 4px 10px 8px; }
-.repeat-row { border-top: 1px dashed var(--vscode-panel-border); padding-top: 4px; margin-top: 6px; }
-.repeat-head { display: flex; justify-content: space-between; align-items: center; }
-
-input.invalid { border-color: var(--vscode-inputValidation-errorBorder, #be1100); }
-.field-error {
-  color: var(--vscode-errorForeground); font-size: 0.9em; white-space: pre-wrap; word-break: break-word;
-}

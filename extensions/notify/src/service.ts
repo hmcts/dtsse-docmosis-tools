@@ -17,10 +17,9 @@ export const configuredProducts = (): NotifyProduct[] => mergeProducts(configure
  */
 function configuredEntries(): unknown {
   const current = vscode.workspace.getConfiguration('hmctsNotify').inspect<unknown[]>('products');
-  const isSet = current && (current.globalValue ?? current.workspaceValue ?? current.workspaceFolderValue) !== undefined;
-  return isSet
-    ? vscode.workspace.getConfiguration('hmctsNotify').get<unknown>('products', [])
-    : vscode.workspace.getConfiguration('hmctsTemplatePreview').get<unknown>('notify.products', []);
+  const isSet = current?.globalValue !== undefined || current?.workspaceValue !== undefined || current?.workspaceFolderValue !== undefined;
+  const settings = vscode.workspace.getConfiguration(isSet ? 'hmctsNotify' : 'hmctsTemplatePreview');
+  return settings.get<unknown>(isSet ? 'products' : 'notify.products', []);
 }
 
 const listId = (product: NotifyProduct) => `${product.vault}/${product.secret}`;

@@ -2,7 +2,7 @@
 
 A VS Code extension that browses, previews and drafts changes to [GOV.UK Notify](https://www.notifications.service.gov.uk) templates. It split out of HMCTS Template Preview. The chosen product is remembered per extension, so choose it again once; keys are read from Key Vault and never stored.
 
-Notify templates can only be changed in the Notify web app: its API lists, reads and previews them, but can't write them. The **GOV.UK Notify** icon in the activity bar is for to the activity bar trying personalisation against a product's templates and drafting a change before you paste it into Notify.
+Notify templates can only be changed in the Notify web app: its API lists, reads and previews them, but can't write them. The **GOV.UK Notify** icon in the activity bar opens a view for trying personalisation against a product's templates and drafting a change before you paste it into Notify.
 
 1. Click the icon and choose a product. The extension reads that product's Notify API key from its AAT Key Vault with your own `az` login, and keeps it in memory for the session only. It is never written to disk.
 2. Choose a template from the dropdown, which groups them into email, text message and letter and can be filtered by name, then click **Open** or press Enter. The template opens in an editor tab.

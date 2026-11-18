@@ -12,7 +12,7 @@ import type { NotifyService } from './service';
 import { NotifyStorage } from './storage';
 
 export const EDITOR_VIEW_TYPE = 'hmctsNotify.editor';
-export const DIFF_SCHEME = 'hmcts-notify';
+export const DIFF_SCHEME = 'hmcts-notify-templates';
 
 /** Read-only documents for `vscode.diff`: the Notify version and the draft of a template. */
 export class NotifyDocuments implements vscode.TextDocumentContentProvider {

@@ -117,14 +117,14 @@
     "viewsContainers": {
       "activitybar": [
         {
-          "id": "hmctsNotify",
+          "id": "hmctsNotifyTemplates",
           "title": "GOV.UK Notify",
           "icon": "media/notify.svg"
         }
       ]
     },
     "views": {
-      "hmctsNotify": [
+      "hmctsNotifyTemplates": [
         {
           "type": "webview",
           "id": "hmctsNotify.templates",

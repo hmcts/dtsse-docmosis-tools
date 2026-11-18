@@ -26,7 +26,7 @@ export class NotifySidebar implements vscode.WebviewViewProvider, vscode.Disposa
   ) {
     this.disposables.push(
       vscode.workspace.onDidChangeConfiguration((e) => {
-        if (e.affectsConfiguration('hmctsNotify.products')) void this.productsChanged();
+        if (e.affectsConfiguration('hmctsNotify.products') || e.affectsConfiguration('hmctsTemplatePreview.notify.products')) void this.productsChanged();
       }),
     );
   }

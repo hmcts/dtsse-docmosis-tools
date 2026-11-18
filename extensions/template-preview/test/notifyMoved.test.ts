@@ -7,6 +7,8 @@ const host = vi.hoisted(() => ({
   choice: undefined as string | undefined,
   messages: [] as string[],
   executed: [] as unknown[][],
+  installFails: false,
+  errors: [] as string[],
 }));
 
 vi.mock('vscode', () => ({
@@ -17,8 +19,14 @@ vi.mock('vscode', () => ({
       host.messages.push(message);
       return Promise.resolve(host.choice);
     },
+    showErrorMessage: (message: string) => host.errors.push(message),
   },
-  commands: { executeCommand: (...args: unknown[]) => host.executed.push(args) },
+  commands: {
+    executeCommand: (...args: unknown[]) => {
+      host.executed.push(args);
+      return host.installFails ? Promise.reject(new Error('offline')) : Promise.resolve();
+    },
+  },
 }));
 
 const { noticeNotifyMoved } = await import('../src/notifyMoved');
@@ -31,18 +39,19 @@ function context(state: Record<string, unknown> = {}) {
 }
 
 describe('noticeNotifyMoved', () => {
-  beforeEach(() => Object.assign(host, { setting: undefined, installed: false, choice: undefined, messages: [], executed: [] }));
+  beforeEach(() => Object.assign(host, { setting: undefined, installed: false, choice: undefined, messages: [], executed: [], installFails: false, errors: [] }));
 
   it('stays quiet for someone who never used Notify', () => {
     noticeNotifyMoved(context());
     expect(host.messages).toEqual([]);
   });
 
-  it('tells someone who chose a Notify product, once', () => {
+  it('tells someone who chose a Notify product again until they choose', () => {
     const ctx = context({ 'notify.product': 'pcs' });
     noticeNotifyMoved(ctx);
     noticeNotifyMoved(ctx);
-    expect(host.messages).toHaveLength(1);
+    expect(host.messages).toHaveLength(2);
+    expect(ctx.state['notify.movedNoticeShown']).toBeUndefined();
   });
 
   it('tells someone who set the old products setting', () => {
@@ -57,9 +66,29 @@ describe('noticeNotifyMoved', () => {
     expect(host.messages).toEqual([]);
   });
 
-  it('installs the new extension on Install', async () => {
+  it('installs the new extension on Install and stops telling them', async () => {
     host.choice = 'Install';
-    noticeNotifyMoved(context({ 'notify.product': 'pcs' }));
-    await vi.waitFor(() => expect(host.executed).toEqual([['workbench.extensions.installExtension', 'hmcts.hmcts-notify']]));
+    const ctx = context({ 'notify.product': 'pcs' });
+    noticeNotifyMoved(ctx);
+    await vi.waitFor(() => expect(ctx.state['notify.movedNoticeShown']).toBe(true));
+    expect(host.executed).toEqual([['workbench.extensions.installExtension', 'hmcts.hmcts-notify']]);
+  });
+
+  it('reports a failed install and tells them again next time', async () => {
+    host.choice = 'Install';
+    host.installFails = true;
+    const ctx = context({ 'notify.product': 'pcs' });
+    noticeNotifyMoved(ctx);
+    await vi.waitFor(() => expect(host.errors).toHaveLength(1));
+    expect(host.errors[0]).toContain('hmcts.hmcts-notify');
+    expect(ctx.state['notify.movedNoticeShown']).toBeUndefined();
+  });
+
+  it("stops telling them on Don't show again", async () => {
+    host.choice = "Don't show again";
+    const ctx = context({ 'notify.product': 'pcs' });
+    noticeNotifyMoved(ctx);
+    await vi.waitFor(() => expect(ctx.state['notify.movedNoticeShown']).toBe(true));
+    expect(host.executed).toEqual([]);
   });
 });

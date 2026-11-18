@@ -134,9 +134,6 @@ function rebuildForm(force = false): void {
         data = setAt(data, [dataKey(data, String(name)), ...rest], value);
         dataEdited();
       },
-      addRow: () => undefined,
-      removeRow: () => undefined,
-      absolute: (path) => path,
     }),
   );
 }

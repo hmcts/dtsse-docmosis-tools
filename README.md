@@ -16,7 +16,7 @@ Node 24 or later.
 ```sh
 npm ci
 npm test                                               # library and extension tests
-npm run build --workspace extensions/template-preview
+npm run build                                          # typecheck and bundle both extensions
 npm run package                                        # a .vsix in each extension directory
 ```
 
