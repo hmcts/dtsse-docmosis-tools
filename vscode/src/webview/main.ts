@@ -180,6 +180,7 @@ function applyTemplate(next: TemplateInfo): void {
 }
 
 window.addEventListener('message', (event: MessageEvent<HostToWebview>) => {
+  if (!event.origin.startsWith('vscode-webview://')) return;
   const msg = event.data;
   switch (msg.type) {
     case 'init':

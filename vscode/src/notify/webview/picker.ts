@@ -99,6 +99,7 @@ function setLoading(text: string): void {
 }
 
 window.addEventListener('message', (event: MessageEvent<HostToPicker>) => {
+  if (!event.origin.startsWith('vscode-webview://')) return;
   const msg = event.data;
   switch (msg.type) {
     case 'init':
