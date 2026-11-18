@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Release tag to publish, such as vscode-v0.1.42 (HMCTS Template Preview) or notify-vscode-v0.1.42 (GOV.UK Notify Templates)
+        description: Release tag to publish, such as vscode-v0.1.42 (HMCTS Template Preview), notify-vscode-v0.1.42 (GOV.UK Notify Templates) or jenkins-vscode-v0.1.42 (HMCTS Jenkins)
         required: true
         type: string
   # Releases made with GITHUB_TOKEN trigger no workflows, so release.yml dispatches this one;
@@ -41,12 +41,16 @@ jobs:
               echo "EXTENSION_DIR=extensions/notify" >> "$GITHUB_ENV"
               echo "VSIX=hmcts-notify.vsix" >> "$GITHUB_ENV"
               ;;
+            jenkins-vscode-v*)
+              echo "EXTENSION_DIR=extensions/jenkins" >> "$GITHUB_ENV"
+              echo "VSIX=dtsse-jenkins.vsix" >> "$GITHUB_ENV"
+              ;;
             vscode-v*)
               echo "EXTENSION_DIR=extensions/template-preview" >> "$GITHUB_ENV"
               echo "VSIX=hmcts-template-preview.vsix" >> "$GITHUB_ENV"
               ;;
             *)
-              echo "::error::Unknown tag '${TAG}': expected vscode-v<version> (HMCTS Template Preview) or notify-vscode-v<version> (GOV.UK Notify Templates)."
+              echo "::error::Unknown tag '${TAG}': expected vscode-v<version> (HMCTS Template Preview), notify-vscode-v<version> (GOV.UK Notify Templates) or jenkins-vscode-v<version> (HMCTS Jenkins)."
               exit 1
               ;;
           esac

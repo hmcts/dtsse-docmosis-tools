@@ -1,7 +1,7 @@
 // Fails unless every file the extension loads at runtime is in the vsix.
 import { readFileSync } from 'node:fs';
 
-const file = new URL('../dtsse-jenkins-vscode.vsix', import.meta.url);
+const file = new URL('../dtsse-jenkins.vsix', import.meta.url);
 const zip = readFileSync(file);
 let eocd = zip.length - 22;
 while (eocd >= 0 && zip.readUInt32LE(eocd) !== 0x06054b50) eocd--;

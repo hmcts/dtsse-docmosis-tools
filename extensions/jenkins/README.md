@@ -1,4 +1,4 @@
-# DTSSE Jenkins
+# HMCTS Jenkins
 
 VS Code extension for HMCTS CFT Jenkins pipelines. It runs in the cft-workspace: a workspace folder containing `workspace.yaml`.
 
@@ -11,7 +11,7 @@ Jenkins (`https://build.hmcts.net`) needs the VPN. The extension shows a "can't 
 
 ## Install
 
-Download `dtsse-jenkins-vscode.vsix` from the CI run's artifacts, then run **Extensions: Install from VSIX...**, or `code --install-extension dtsse-jenkins-vscode.vsix`.
+Download `dtsse-jenkins.vsix` from the CI run's artifacts, then run **Extensions: Install from VSIX...**, or `code --install-extension dtsse-jenkins.vsix`.
 
 ## Credentials
 
@@ -26,7 +26,7 @@ Jenkins uses basic auth with your username and an API token. The extension reads
    ```
 
    `JENKINS_URL` is optional.
-2. Credentials stored by **DTSSE Jenkins: Set Credentials** in VS Code's secret storage.
+2. Credentials stored by **HMCTS Jenkins: Set Credentials** in VS Code's secret storage.
 
 PR alerts sign in to GitHub through VS Code (`repo` scope) the first time you accept the prompt.
 
@@ -43,7 +43,7 @@ PR alerts sign in to GitHub through VS Code (`repo` scope) the first time you ac
 
 ## Commands
 
-All are under **DTSSE Jenkins:** in the command palette.
+All are under **HMCTS Jenkins:** in the command palette.
 
 | Command                                       |                                                |
 | --------------------------------------------- | ---------------------------------------------- |
@@ -60,7 +60,7 @@ npm ci
 npm run lint
 npm run typecheck
 npm test          # vitest; 100% coverage required on src/core
-npm run package   # builds dist/extension.cjs and dtsse-jenkins-vscode.vsix
+npm run package   # builds dist/extension.cjs and dtsse-jenkins.vsix
 ```
 
 Logic lives in `src/core` (pure, no `vscode` import); `src/adapters` and `src/extension.ts` are thin VS Code wiring and are excluded from coverage.

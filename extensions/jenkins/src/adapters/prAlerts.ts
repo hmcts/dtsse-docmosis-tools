@@ -59,7 +59,7 @@ export class PrAlerts implements vscode.Disposable {
     try {
       delay = await this.poll();
     } catch (error) {
-      console.warn(`DTSSE Jenkins PR alerts: ${(error as Error).message}`);
+      console.warn(`HMCTS Jenkins PR alerts: ${(error as Error).message}`);
     }
     this.schedule(delay);
   }

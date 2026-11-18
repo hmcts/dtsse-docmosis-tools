@@ -2,7 +2,7 @@
   "name": "dtsse-ide-tooling",
   "private": true,
   "license": "MIT",
-  "description": "HMCTS DTSSE tooling for template authors: the docmosis CLI and library, the HMCTS Template Preview and GOV.UK Notify Templates VS Code extensions, and the Notify library",
+  "description": "HMCTS DTSSE tooling for template authors: the docmosis CLI and library, the HMCTS Template Preview, GOV.UK Notify Templates and HMCTS Jenkins VS Code extensions, and the Notify library",
   "workspaces": [
     "packages/*",
     "extensions/*"

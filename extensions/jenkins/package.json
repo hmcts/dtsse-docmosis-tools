@@ -1,6 +1,6 @@
 {
-  "name": "dtsse-jenkins-vscode",
-  "displayName": "DTSSE Jenkins",
+  "name": "dtsse-jenkins",
+  "displayName": "HMCTS Jenkins",
   "description": "Watch HMCTS CFT Jenkins pipelines by team, get alerts when your pull request builds finish, and investigate failures with Claude.",
   "version": "0.1.0",
   "publisher": "hmcts",
@@ -9,7 +9,12 @@
   "icon": "media/icon.png",
   "repository": {
     "type": "git",
-    "url": "https://github.com/hmcts/dtsse-jenkins-vscode.git"
+    "url": "https://github.com/hmcts/dtsse-ide-tooling.git",
+    "directory": "extensions/jenkins"
+  },
+  "homepage": "https://github.com/hmcts/dtsse-ide-tooling/tree/master/extensions/jenkins#readme",
+  "bugs": {
+    "url": "https://github.com/hmcts/dtsse-ide-tooling/issues"
   },
   "categories": [
     "Other"
@@ -34,7 +39,7 @@
       "activitybar": [
         {
           "id": "dtsseJenkins",
-          "title": "DTSSE Jenkins",
+          "title": "HMCTS Jenkins",
           "icon": "media/jenkins.svg"
         }
       ]
@@ -51,7 +56,7 @@
       {
         "view": "dtsseJenkins.pipelines",
         "when": "dtsseJenkins.state == noWorkspace",
-        "contents": "DTSSE Jenkins needs the cft-workspace: open a folder that contains a workspace.yaml listing the HMCTS repositories."
+        "contents": "HMCTS Jenkins needs the cft-workspace: open a folder that contains a workspace.yaml listing the HMCTS repositories."
       },
       {
         "view": "dtsseJenkins.pipelines",
@@ -68,49 +73,49 @@
       {
         "command": "dtsseJenkins.setCredentials",
         "title": "Set Credentials",
-        "category": "DTSSE Jenkins",
+        "category": "HMCTS Jenkins",
         "icon": "$(key)"
       },
       {
         "command": "dtsseJenkins.refresh",
         "title": "Refresh",
-        "category": "DTSSE Jenkins",
+        "category": "HMCTS Jenkins",
         "icon": "$(refresh)"
       },
       {
         "command": "dtsseJenkins.openInJenkins",
         "title": "Open in Jenkins",
-        "category": "DTSSE Jenkins",
+        "category": "HMCTS Jenkins",
         "icon": "$(link-external)"
       },
       {
         "command": "dtsseJenkins.copyLink",
         "title": "Copy Link",
-        "category": "DTSSE Jenkins",
+        "category": "HMCTS Jenkins",
         "icon": "$(copy)"
       },
       {
         "command": "dtsseJenkins.openPullRequest",
         "title": "Open Pull Request",
-        "category": "DTSSE Jenkins",
+        "category": "HMCTS Jenkins",
         "icon": "$(git-pull-request)"
       },
       {
         "command": "dtsseJenkins.investigate",
         "title": "Investigate with Claude",
-        "category": "DTSSE Jenkins",
+        "category": "HMCTS Jenkins",
         "icon": "$(sparkle)"
       },
       {
         "command": "dtsseJenkins.signInToGitHub",
         "title": "Sign in to GitHub",
-        "category": "DTSSE Jenkins",
+        "category": "HMCTS Jenkins",
         "icon": "$(github)"
       },
       {
         "command": "dtsseJenkins.openStatusBuild",
         "title": "Open Last Master Build",
-        "category": "DTSSE Jenkins"
+        "category": "HMCTS Jenkins"
       }
     ],
     "menus": {
@@ -161,7 +166,7 @@
       ]
     },
     "configuration": {
-      "title": "DTSSE Jenkins",
+      "title": "HMCTS Jenkins",
       "properties": {
         "dtsseJenkins.productViews": {
           "type": "object",
@@ -212,7 +217,7 @@
     "build": "npm run typecheck && node esbuild.mjs",
     "watch": "node esbuild.mjs --watch",
     "test": "vitest run --coverage",
-    "package": "npm run build && node scripts/check-bundle.mjs && vsce package --no-dependencies --out dtsse-jenkins-vscode.vsix && node scripts/check-vsix.mjs",
+    "package": "npm run build && node scripts/check-bundle.mjs && vsce package --no-dependencies --out dtsse-jenkins.vsix && node scripts/check-vsix.mjs",
     "vscode:prepublish": "npm run build"
   },
   "devDependencies": {
