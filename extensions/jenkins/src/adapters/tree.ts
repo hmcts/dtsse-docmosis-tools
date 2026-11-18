@@ -210,7 +210,6 @@ export class PipelineTree implements vscode.TreeDataProvider<Node>, vscode.Dispo
       case 'team': {
         const { team } = node;
         const item = new vscode.TreeItem(team.label, vscode.TreeItemCollapsibleState.Collapsed);
-        item.iconPath = themeIcon(team.status);
         item.description = `${team.repos.length} ${team.repos.length === 1 ? 'repo' : 'repos'}`;
         item.tooltip = [team.product, team.view?.url ?? 'No Jenkins view'].join('\n');
         item.contextValue = team.view ? 'teamWithView' : 'team';

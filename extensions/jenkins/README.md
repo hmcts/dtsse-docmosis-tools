@@ -2,7 +2,7 @@
 
 VS Code extension for HMCTS CFT Jenkins pipelines. It runs in the cft-workspace: a workspace folder containing `workspace.yaml`.
 
-- **Pipelines view** (activity bar): every team (workspace product), collapsed to start with. A team is labelled with its Jenkins view name when it has one and shows its repo count; its icon is the worst state of any job in the view (red, yellow, running, green, or grey with no view or no jobs). Expand a team for its repos, then master, nightly master, other branches and pull requests, recent builds and their stages. A team's repos are only listed when it is expanded. Refreshes on a timer, paused while the view is hidden. Team context menu: Open in Jenkins (when it has a view) and Refresh.
+- **Pipelines view** (activity bar): every team (workspace product), collapsed to start with. A team is labelled with its Jenkins view name when it has one and shows its repo count. Expand a team for its repos, then master, nightly master, other branches and pull requests, recent builds and their stages. A team's repos are only listed when it is expanded. Refreshes on a timer, paused while the view is hidden. Team context menu: Open in Jenkins (when it has a view) and Refresh.
 - **Repo status**: the status bar shows the last master build of the repo you are editing.
 - **PR alerts**: notifies when the Jenkins build of one of your open pull requests finishes or waits for input, with Open Build, Open PR and (on failure) Investigate with Claude. Not limited to a team. Only one VS Code window alerts at a time.
 - **Investigate with Claude**: opens a terminal that runs `hai` (from `@hmcts-cft/hai-cli`) with a prompt describing the failed build.
