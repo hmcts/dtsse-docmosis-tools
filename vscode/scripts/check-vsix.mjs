@@ -1,6 +1,6 @@
 // Fails unless every file the extension loads at runtime is in the vsix, and dist/cli/docmosis is
-// stored with mode 0755, which the extension's stub relies on to exec it. Reads the zip's central directory: the Unix mode is the high
-// half of each entry's external attributes.
+// stored with mode 0755, which the extension's stub relies on to exec it. Reads the zip's central
+// directory: the Unix mode is the high half of each entry's external attributes.
 import { readFileSync } from 'node:fs';
 
 const file = new URL('../hmcts-template-preview.vsix', import.meta.url);
@@ -33,6 +33,7 @@ const required = [
   'extension/dist/cli/docmosis.cmd',
   'extension/media/icon.png',
   'extension/media/notify.svg',
+  'extension/media/templates.svg',
 ];
 const absent = required.filter((name) => !modes.has(name));
 if (absent.length > 0) {

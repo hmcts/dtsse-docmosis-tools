@@ -8,6 +8,7 @@
 !dist/pdf.worker.min.mjs
 !media/icon.png
 !media/notify.svg
+!media/templates.svg
 !package.json
 !README.md
 !LICENSE

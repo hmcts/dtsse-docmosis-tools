@@ -25,6 +25,32 @@ Toolbar:
 
 Data is saved on every render at `<workspaceFolder>/.hmcts-template-preview/<template path>/default.json`, where `<template path>` is the template's path in the workspace without `.docx` (so `a/X.docx` and `b/X.docx` keep separate data). Data saved by earlier versions under `.hmcts-template-preview/<template name>/default.json` is loaded when the new file doesn't exist yet. The folder contains a `.gitignore` with `*`, so it is never committed. The form holds only the values you supplied; missing values aren't defaulted.
 
+## The Templates view
+
+The **HMCTS Templates** icon in the Activity Bar opens a **Templates** view that lists the `.docx` templates in one or more GitHub repositories. The repositories don't need to be cloned. Click a template to open it in the preview. **Search templates** (the search button in the view's title bar, or the command palette) searches every template by file name and folder. You can also type in the view to filter it.
+
+List the repositories in `hmctsTemplatePreview.templateLibraries`, usually in the workspace settings of the workspace that uses them:
+
+```json
+"hmctsTemplatePreview.templateLibraries": [
+  { "repo": "acme/letters", "path": "templates", "label": "Letters" },
+  { "repo": "acme/orders", "ref": "release" }
+]
+```
+
+| Key | |
+|---|---|
+| `repo` | The repository, as `owner/name`. Required. |
+| `ref` | Branch, tag or commit. Defaults to the repository's default branch. |
+| `path` | Folder to list. Defaults to the whole repository. |
+| `label` | Name shown for the library when there are several. |
+
+The same repository can be listed more than once at different refs or folders. Owner and repository names are matched without regard to case, as GitHub does; refs and folders are case-sensitive. An entry that repeats an earlier one (same repository, ref and folder) is ignored and reported in the **HMCTS Template Preview** output channel.
+
+The view uses your VS Code GitHub sign-in, or the GitHub CLI's login (`gh auth login`) if VS Code has none. If GitHub rejects one of these tokens, the view tries the other before it shows a **Sign in to GitHub** button. For a repository in an organisation that uses SAML single sign-on, the token must be authorised for that organisation; the error message links to the page that does this.
+
+The file list is saved, so the view shows it at once and checks GitHub in the background for changes when it opens, at most every 5 minutes. A check that finds no change doesn't count against GitHub's rate limit. **Refresh** checks now. Opening a template also checks its library when the last check is more than 5 minutes old, without waiting for the check. A template is downloaded the first time you open it, and again only when its content changes, including when that check finds a newer version of a template you just opened. Downloads are kept in the extension's global storage under `libraries/<owner>/<repo>/<ref>/<path in the repo>`, where `<ref>` is `default` for the default branch and otherwise the ref's name made safe for a file name, plus a short hash of it. Each version of a template from one ref is downloaded to the same path, so a preview that is open reloads when a newer version arrives and keeps its saved data, and libraries on the same repository at different refs keep separate copies. Changes you make to a downloaded copy are overwritten when a newer version is downloaded.
+
 ## GOV.UK Notify templates
 
 Notify templates can only be changed in the Notify web app: its API lists, reads and previews them, but can't write them. The extension adds a **GOV.UK Notify** icon to the activity bar for trying personalisation against a product's templates and drafting a change before you paste it into Notify.
@@ -89,7 +115,7 @@ Open this folder in VS Code and press F5 to start an Extension Development Host,
 | `npm run test:integration` | Opens the Docmosis preview and a Notify template in a real VS Code under `xvfb-run`, with local stand-ins for dtsse-doc-render, the Notify API and `az` (`@vscode/test-electron`; downloads VS Code on first run). |
 | `npm run package` | Build, then write `hmcts-template-preview.vsix`. |
 
-Source layout: `src/schema.ts` infers the schema from an instruction tree (pure); `src/templateTree.ts` is the only code that reads a `.docx`; `src/render.ts` calls `renderFile` and drops stale results; `src/webview/` is the form and PDF pane; `src/messages.ts` types the host and webview messages; `src/webviewHtml.ts` builds the pages' HTML and CSP.
+Source layout: `src/schema.ts` infers the schema from an instruction tree (pure); `src/templateTree.ts` is the only code that reads a `.docx`; `src/render.ts` calls `renderFile` and drops stale results; `src/webview/` is the form and PDF pane; `src/messages.ts` types the host and webview messages; `src/webviewHtml.ts` builds the pages' HTML and CSP; `src/library/` is the Templates view, where only `view.ts` uses the VS Code API.
 
 Notify: `src/notify/products.ts` is the product table; `keyVault.ts` reads keys with `az`; `client.ts` signs requests and calls the Notify API; `placeholders.ts` finds `((placeholders))` and builds the form's schema; `localRender.ts` is the approximate Edit preview; `sidebar.ts` is the side view and `panel.ts` the editor tab, with `service.ts` sharing keys and template lists between them; `storage.ts` saves data and drafts; `messages.ts` types their messages; `webview/` holds the two webviews.
 

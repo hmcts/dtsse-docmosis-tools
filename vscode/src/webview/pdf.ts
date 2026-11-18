@@ -34,13 +34,13 @@ export class PdfPane {
     const generation = ++this.generation;
     const next = await pdfjs.getDocument({ data: bytes.slice() }).promise;
     if (generation !== this.generation) {
-      void next.destroy();
+      void next.loadingTask.destroy();
       return;
     }
     const previous = this.doc;
     this.doc = next;
     await this.layout(generation);
-    void previous?.destroy();
+    void previous?.loadingTask.destroy();
   }
 
   private relayoutTimer: number | undefined;

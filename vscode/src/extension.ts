@@ -4,12 +4,14 @@ import { DIFF_SCHEME, NotifyPanels } from './notify/panel';
 import { NotifyService } from './notify/service';
 import { NotifySidebar, PICKER_VIEW_ID } from './notify/sidebar';
 import { PreviewProvider, VIEW_TYPE } from './previewProvider';
+import { TemplateLibraryView } from './library/view';
 
 export function activate(context: vscode.ExtensionContext): void {
   const output = vscode.window.createOutputChannel('HMCTS Template Preview');
   context.subscriptions.push(
     output,
     watchTerminalCommand(context),
+    new TemplateLibraryView(context, output),
     vscode.window.registerCustomEditorProvider(VIEW_TYPE, new PreviewProvider(context, output), {
       webviewOptions: { retainContextWhenHidden: true },
       supportsMultipleEditorsPerDocument: false,

@@ -29,20 +29,6 @@ export class Uri {
   }
 }
 
-export class EventEmitter<T> {
-  private readonly listeners: Listener<T>[] = [];
-  readonly event = (listener: Listener<T>) => {
-    this.listeners.push(listener);
-    return disposable;
-  };
-  fire(value: T): void {
-    this.listeners.forEach((l) => l(value));
-  }
-  dispose(): void {
-    this.listeners.length = 0;
-  }
-}
-
 export enum ViewColumn {
   Active = -1,
 }
@@ -53,6 +39,50 @@ export class RelativePattern {
 
 const disposable = { dispose: () => undefined };
 
+export class EventEmitter<T> {
+  private listeners: Listener<T>[] = [];
+  readonly event = (listener: Listener<T>) => {
+    this.listeners.push(listener);
+    return disposable;
+  };
+  fire(value: T): void {
+    this.listeners.forEach((listener) => listener(value));
+  }
+  dispose(): void {
+    this.listeners = [];
+  }
+}
+
+export enum TreeItemCollapsibleState {
+  None = 0,
+  Collapsed = 1,
+  Expanded = 2,
+}
+
+export class ThemeIcon {
+  static readonly File = new ThemeIcon('file');
+  static readonly Folder = new ThemeIcon('folder');
+  constructor(readonly id: string) {}
+}
+
+export class TreeItem {
+  id?: string;
+  description?: string;
+  tooltip?: string;
+  iconPath?: unknown;
+  resourceUri?: Uri;
+  contextValue?: string;
+  command?: { command: string; title: string; arguments?: unknown[] };
+  constructor(
+    readonly label: string,
+    readonly collapsibleState: TreeItemCollapsibleState = TreeItemCollapsibleState.None,
+  ) {}
+}
+
+export enum ProgressLocation {
+  Notification = 15,
+}
+
 export const stub = {
   settings: {} as Record<string, unknown>,
   workspaceRoot: '/',
@@ -60,10 +90,14 @@ export const stub = {
   configListeners: [] as Array<(event: { affectsConfiguration(section: string): boolean }) => unknown>,
   openDialog: (): Promise<Uri[] | undefined> => Promise.resolve(undefined),
   panels: [] as FakePanel[],
-  executed: [] as { command: string; args: unknown[] }[],
   clipboard: '',
   opened: [] as string[],
   infos: [] as string[],
+  executed: [] as unknown[][],
+  commands: new Map<string, (...args: unknown[]) => unknown>(),
+  githubSession: undefined as string | undefined,
+  signInSession: undefined as string | undefined,
+  treeView: undefined as { message?: string; visible: boolean } | undefined,
 };
 
 /** Clears what the stub has recorded. */
@@ -73,6 +107,7 @@ export function resetStub(root = '/'): void {
   stub.errors = [];
   stub.panels = [];
   stub.executed = [];
+  stub.commands = new Map();
   stub.clipboard = '';
   stub.opened = [];
   stub.infos = [];
@@ -115,6 +150,11 @@ export const window = {
     return Promise.resolve(undefined);
   },
   showOpenDialog: () => stub.openDialog(),
+  withProgress: <T>(_options: unknown, task: () => Promise<T>) => task(),
+  createTreeView: () => {
+    stub.treeView = { ...disposable, visible: true, message: undefined, onDidChangeVisibility: () => disposable } as never;
+    return stub.treeView;
+  },
   createOutputChannel: () => ({ ...disposable, appendLine: () => undefined }),
   registerCustomEditorProvider: () => disposable,
   registerWebviewViewProvider: () => disposable,
@@ -127,11 +167,22 @@ export const window = {
 };
 
 export const commands = {
-  executeCommand: (command: string, ...args: unknown[]) => {
-    stub.executed.push({ command, args });
+  executeCommand: (...args: unknown[]) => {
+    stub.executed.push(args);
     return Promise.resolve(undefined);
   },
-  registerCommand: () => disposable,
+  registerCommand: (id: string, handler: (...args: unknown[]) => unknown) => {
+    stub.commands.set(id, handler);
+    return disposable;
+  },
+};
+
+export const authentication = {
+  getSession: (_provider: string, _scopes: string[], options?: { createIfNone?: boolean }) => {
+    const token = options?.createIfNone ? stub.signInSession : stub.githubSession;
+    return token ? Promise.resolve({ accessToken: token }) : Promise.reject(new Error('no session'));
+  },
+  onDidChangeSessions: () => disposable,
 };
 
 /** An environment variable collection that records what the extension asked for. */

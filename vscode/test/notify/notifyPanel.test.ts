@@ -174,8 +174,8 @@ describe('Notify editor panel', () => {
     await until(() => stub.clipboard === 'the body', 'the clipboard');
 
     panel.send({ type: 'showDiff', subject: 'New subject', body: 'New body' });
-    await until(() => stub.executed.some((c) => c.command === 'vscode.diff'), 'the diff');
-    const [left, right] = stub.executed.find((c) => c.command === 'vscode.diff')!.args as Uri[];
+    await until(() => stub.executed.some(([command]) => command === 'vscode.diff'), 'the diff');
+    const [, left, right] = stub.executed.find(([command]) => command === 'vscode.diff') as [string, Uri, Uri];
     expect(env.panels.documents.provideTextDocumentContent(left as never)).toBe(`Subject: ${TEMPLATE.subject}\n\n${TEMPLATE.body}\n`);
     expect(env.panels.documents.provideTextDocumentContent(right as never)).toBe('Subject: New subject\n\nNew body\n');
 
