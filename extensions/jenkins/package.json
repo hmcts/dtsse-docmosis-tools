@@ -1,0 +1,247 @@
+{
+  "name": "dtsse-jenkins-vscode",
+  "displayName": "DTSSE Jenkins",
+  "description": "Watch HMCTS CFT Jenkins pipelines for a product, get alerts when your pull request builds finish, and investigate failures with Claude.",
+  "version": "0.1.0",
+  "publisher": "hmcts",
+  "private": true,
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/hmcts/dtsse-jenkins-vscode.git"
+  },
+  "categories": [
+    "Other"
+  ],
+  "keywords": [
+    "hmcts",
+    "jenkins",
+    "pipeline",
+    "ci",
+    "claude"
+  ],
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "main": "./dist/extension.js",
+  "activationEvents": [
+    "workspaceContains:workspace.yaml",
+    "onStartupFinished"
+  ],
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "dtsseJenkins",
+          "title": "DTSSE Jenkins",
+          "icon": "media/jenkins.svg"
+        }
+      ]
+    },
+    "views": {
+      "dtsseJenkins": [
+        {
+          "id": "dtsseJenkins.pipelines",
+          "name": "Pipelines"
+        }
+      ]
+    },
+    "viewsWelcome": [
+      {
+        "view": "dtsseJenkins.pipelines",
+        "when": "dtsseJenkins.state == noWorkspace",
+        "contents": "DTSSE Jenkins needs the cft-workspace: open a folder that contains a workspace.yaml listing the HMCTS repositories."
+      },
+      {
+        "view": "dtsseJenkins.pipelines",
+        "when": "dtsseJenkins.state == noProduct",
+        "contents": "Choose the product whose pipelines you want to watch.\n[Select Product](command:dtsseJenkins.selectProduct)"
+      },
+      {
+        "view": "dtsseJenkins.pipelines",
+        "when": "dtsseJenkins.state == noCredentials",
+        "contents": "Jenkins needs your username and API token. Put them in the workspace's .claude/.jenkins.env, or store them here.\n[Set Credentials](command:dtsseJenkins.setCredentials)"
+      },
+      {
+        "view": "dtsseJenkins.pipelines",
+        "when": "dtsseJenkins.state == vpnDown",
+        "contents": "Can't reach Jenkins. Is the VPN connected?\n[Retry](command:dtsseJenkins.refresh)"
+      }
+    ],
+    "commands": [
+      {
+        "command": "dtsseJenkins.selectProduct",
+        "title": "Select Product",
+        "category": "DTSSE Jenkins",
+        "icon": "$(server)"
+      },
+      {
+        "command": "dtsseJenkins.setCredentials",
+        "title": "Set Credentials",
+        "category": "DTSSE Jenkins",
+        "icon": "$(key)"
+      },
+      {
+        "command": "dtsseJenkins.refresh",
+        "title": "Refresh",
+        "category": "DTSSE Jenkins",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "dtsseJenkins.openInJenkins",
+        "title": "Open in Jenkins",
+        "category": "DTSSE Jenkins",
+        "icon": "$(link-external)"
+      },
+      {
+        "command": "dtsseJenkins.copyLink",
+        "title": "Copy Link",
+        "category": "DTSSE Jenkins",
+        "icon": "$(copy)"
+      },
+      {
+        "command": "dtsseJenkins.openPullRequest",
+        "title": "Open Pull Request",
+        "category": "DTSSE Jenkins",
+        "icon": "$(git-pull-request)"
+      },
+      {
+        "command": "dtsseJenkins.investigate",
+        "title": "Investigate with Claude",
+        "category": "DTSSE Jenkins",
+        "icon": "$(sparkle)"
+      },
+      {
+        "command": "dtsseJenkins.signInToGitHub",
+        "title": "Sign in to GitHub",
+        "category": "DTSSE Jenkins",
+        "icon": "$(github)"
+      },
+      {
+        "command": "dtsseJenkins.openStatusBuild",
+        "title": "Open Last Master Build",
+        "category": "DTSSE Jenkins"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "dtsseJenkins.selectProduct",
+          "when": "view == dtsseJenkins.pipelines",
+          "group": "navigation@1"
+        },
+        {
+          "command": "dtsseJenkins.refresh",
+          "when": "view == dtsseJenkins.pipelines",
+          "group": "navigation@2"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "dtsseJenkins.openInJenkins",
+          "when": "view == dtsseJenkins.pipelines && viewItem =~ /jenkins/",
+          "group": "1_open@1"
+        },
+        {
+          "command": "dtsseJenkins.copyLink",
+          "when": "view == dtsseJenkins.pipelines && viewItem =~ /jenkins/",
+          "group": "1_open@2"
+        },
+        {
+          "command": "dtsseJenkins.openPullRequest",
+          "when": "view == dtsseJenkins.pipelines && viewItem =~ /pr/",
+          "group": "1_open@3"
+        },
+        {
+          "command": "dtsseJenkins.investigate",
+          "when": "view == dtsseJenkins.pipelines && viewItem =~ /failedBuild/",
+          "group": "2_claude@1"
+        },
+        {
+          "command": "dtsseJenkins.refresh",
+          "when": "view == dtsseJenkins.pipelines",
+          "group": "3_refresh@1"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "dtsseJenkins.openStatusBuild",
+          "when": "false"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "DTSSE Jenkins",
+      "properties": {
+        "dtsseJenkins.defaultProduct": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Product to show when none has been chosen in this workspace, for example `pcs`."
+        },
+        "dtsseJenkins.productViews": {
+          "type": "object",
+          "default": {},
+          "additionalProperties": {
+            "type": "string"
+          },
+          "markdownDescription": "Maps a product to the name of its Jenkins view, for products whose view name is not the product name. For example `{ \"civil\": \"Civil-CUI\" }`."
+        },
+        "dtsseJenkins.refreshSeconds": {
+          "type": "number",
+          "default": 60,
+          "minimum": 10,
+          "markdownDescription": "How often the tree and status bar refresh. Paused while the view is hidden."
+        },
+        "dtsseJenkins.prAlerts.enabled": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Notify when the Jenkins build of one of your open pull requests finishes or waits for input."
+        },
+        "dtsseJenkins.prAlerts.scope": {
+          "type": "string",
+          "enum": [
+            "workspace",
+            "all"
+          ],
+          "default": "workspace",
+          "markdownDescription": "`workspace` alerts only for repositories listed in `workspace.yaml`; `all` alerts for every open pull request you have in the `hmcts` organisation."
+        },
+        "dtsseJenkins.investigate.command": {
+          "type": "string",
+          "default": "hai",
+          "markdownDescription": "Command that starts Claude, optionally with extra arguments such as `hai --bg`. Split on whitespace; no shell quoting."
+        },
+        "dtsseJenkins.investigate.promptTemplate": {
+          "type": "string",
+          "default": "Investigate the failed Jenkins build {buildUrl}. Repo {repo} (local clone {clonePath}), {pr} branch {branch}, commit {commit}. Failed stage: {failedStage}. Use the Jenkins MCP for the console log and test report. Find the root cause, say whether it is the PR, flaky or infrastructure, and propose a fix. Don't push.",
+          "editPresentation": "multilineText",
+          "markdownDescription": "Prompt sent to Claude. Placeholders: `{buildUrl}` `{repo}` `{clonePath}` `{pr}` `{branch}` `{commit}` `{failedStage}`. Clauses whose placeholders are all empty are dropped."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "lint": "biome check .",
+    "format": "biome check --write .",
+    "typecheck": "tsc --noEmit",
+    "build": "npm run typecheck && node esbuild.mjs",
+    "watch": "node esbuild.mjs --watch",
+    "test": "vitest run --coverage",
+    "package": "npm run build && vsce package --no-dependencies --out dtsse-jenkins-vscode.vsix && node scripts/check-vsix.mjs",
+    "vscode:prepublish": "npm run build"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.6.8",
+    "@types/node": "^26.6.6",
+    "@types/vscode": "~1.90.0",
+    "@vitest/coverage-v8": "^5.1.1",
+    "@vscode/vsce": "4.1.1",
+    "esbuild": "^0.28.2",
+    "typescript": "^7.0.2",
+    "vitest": "^5.1.1"
+  },
+  "dependencies": {
+    "yaml": "^2.9.1"
+  },
+  "type": "module"
+}
