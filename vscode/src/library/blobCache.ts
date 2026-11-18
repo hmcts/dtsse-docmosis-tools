@@ -16,7 +16,7 @@ export interface BlobSource {
 
 /** Git's object id for a blob, which the tree listing gives as `sha`. */
 export function gitBlobSha(bytes: Uint8Array): string {
-  return createHash('sha1').update(`blob ${bytes.byteLength}\0`).update(bytes).digest('hex');
+  return createHash('sha1').update(`blob ${bytes.byteLength}\0`).update(bytes).digest('hex'); // NOSONAR: git's blob id is SHA-1; this checks the download against the listing, not authenticity
 }
 
 /**

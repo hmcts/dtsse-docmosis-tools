@@ -54,6 +54,17 @@ describe('GitHub client', () => {
     expect(error.message).toContain(url);
   });
 
+  it('drops an SSO URL that is not on github.com', async () => {
+    const fetch = fakeFetch({
+      '/repos/acme/letters/commits/HEAD': () =>
+        new Response('', { status: 403, headers: { 'x-github-sso': 'required; url=https://github.com.evil.example/orgs/acme/sso' } }),
+    });
+    const error = await failure(new GitHubClient(fetch, 'tok').commit('acme', 'letters', undefined));
+    expect(error.kind).toBe('sso');
+    expect(error.ssoUrl).toBeUndefined();
+    expect(error.message).toMatch(/single sign-on\.$/);
+  });
+
   it('maps 404 to a missing or invisible repo', async () => {
     const error = await failure(new GitHubClient(fakeFetch({}), 'tok').commit('acme', 'letters', undefined));
     expect(error.kind).toBe('notFound');

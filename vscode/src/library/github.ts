@@ -147,13 +147,20 @@ function toTemplates(entries: TreeEntry[], base: string, prefix: string): Templa
   return out;
 }
 
+/** The SSO link is opened in the browser, so only an https page on github.com is kept. */
+function githubPage(candidate: string | undefined): string | undefined {
+  if (!candidate || !URL.canParse(candidate)) return undefined;
+  const { protocol, hostname } = new URL(candidate);
+  return protocol === 'https:' && hostname === 'github.com' ? candidate : undefined;
+}
+
 export function errorFor(response: Response, repo: string): GitHubError {
   const { status, headers } = response;
   if (status === 401) return new GitHubError('unauthorized', 'GitHub rejected the token. Sign in to GitHub again.', status);
 
   const sso = headers.get('x-github-sso');
   if (status === 403 && sso) {
-    const url = /url=([^;\s]+)/.exec(sso)?.[1];
+    const url = githubPage(/url=([^;\s]+)/.exec(sso)?.[1]);
     return new GitHubError(
       'sso',
       `The GitHub token isn't authorised for the organisation that owns ${repo}. Authorise it for SAML single sign-on${url ? `: ${url}` : '.'}`,
