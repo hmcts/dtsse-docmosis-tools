@@ -1,0 +1,64 @@
+{
+  "name": "@hmcts-cft/docmosis-tools",
+  "version": "0.1.4",
+  "description": "Read, check, edit and render Docmosis .docx template files, and read and preview GOV.UK Notify templates",
+  "license": "MIT",
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+ssh://git@github.com/hmcts/dtsse-ide-tooling.git",
+    "directory": "packages/docmosis-tools"
+  },
+  "bin": {
+    "docmosis": "bin/docmosis.mjs"
+  },
+  "main": "./index.mjs",
+  "types": "./index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "default": "./index.mjs"
+    },
+    "./docx": {
+      "types": "./lib/docx.d.ts",
+      "default": "./lib/docx.mjs"
+    },
+    "./render": {
+      "types": "./lib/render.d.ts",
+      "default": "./lib/render.mjs"
+    },
+    "./schema": {
+      "types": "./lib/schema.d.ts",
+      "default": "./lib/schema.mjs"
+    },
+    "./notify": {
+      "types": "./lib/notify.d.ts",
+      "default": "./lib/notify.mjs"
+    },
+    "./notify/node": {
+      "types": "./lib/notify-node.d.ts",
+      "default": "./lib/notify-node.mjs"
+    },
+    "./notify/products": {
+      "types": "./lib/notify-products.d.ts",
+      "default": "./lib/notify-products.mjs"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "bin/docmosis.mjs",
+    "lib/*.mjs",
+    "lib/*.d.ts",
+    "index.mjs",
+    "index.d.ts"
+  ],
+  "engines": {
+    "node": ">=24"
+  },
+  "publishConfig": {
+    "registry": "https://pkgs.dev.azure.com/hmcts/Artifacts/_packaging/hmcts-lib/npm/registry/"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.mjs"
+  }
+}

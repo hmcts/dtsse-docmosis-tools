@@ -33,20 +33,19 @@ jobs:
         with:
           node-version: 24
           cache: npm
-          cache-dependency-path: vscode/package-lock.json
+          cache-dependency-path: package-lock.json
       # The publishing tools come from the lockfile, without install scripts, so nothing unpinned runs with the OIDC token.
       - name: Install the publishing tools
-        working-directory: vscode
         run: npm ci --ignore-scripts
       - name: Download the release's extension package
-        run: gh release download "$TAG" --repo "$GITHUB_REPOSITORY" -p hmcts-template-preview.vsix --dir vscode
+        run: gh release download "$TAG" --repo "$GITHUB_REPOSITORY" -p hmcts-template-preview.vsix --dir extensions/template-preview
       - name: Visual Studio Marketplace
-        working-directory: vscode
+        working-directory: extensions/template-preview
         run: npx --no-install vsce publish --oidc --packagePath hmcts-template-preview.vsix --skip-duplicate
       - name: Open VSX (skipped, no credential)
         if: env.OVSX_PAT == ''
         run: echo "Skipping Open VSX, because secrets.OVSX_PAT is not set."
       - name: Open VSX
         if: env.OVSX_PAT != ''
-        working-directory: vscode
+        working-directory: extensions/template-preview
         run: npx --no-install ovsx publish hmcts-template-preview.vsix -p "$OVSX_PAT" --skip-duplicate

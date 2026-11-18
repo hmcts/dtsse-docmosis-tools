@@ -4,7 +4,7 @@ export function cliConfig(outfile) {
     bundle: true,
     sourcemap: true,
     logLevel: 'info',
-    entryPoints: ['../lib/cli.mjs'],
+    entryPoints: ['../../packages/docmosis-tools/lib/cli.mjs'],
     outfile,
     platform: 'node',
     format: 'esm',

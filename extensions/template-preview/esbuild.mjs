@@ -1,7 +1,11 @@
 import { copyFile, mkdir } from 'node:fs/promises';
+import { createRequire } from 'node:module';
+import { dirname, join } from 'node:path';
 import * as esbuild from 'esbuild';
 import { cliConfig } from './esbuild.cli.mjs';
 
+const require = createRequire(import.meta.url);
+const pdfjsDir = dirname(require.resolve('pdfjs-dist/package.json'));
 const watch = process.argv.includes('--watch');
 
 const common = { bundle: true, sourcemap: true, logLevel: 'info' };
@@ -49,7 +53,7 @@ const configs = [
 ];
 
 await mkdir('dist', { recursive: true });
-await copyFile('node_modules/pdfjs-dist/build/pdf.worker.min.mjs', 'dist/pdf.worker.min.mjs');
+await copyFile(join(pdfjsDir, 'build/pdf.worker.min.mjs'), 'dist/pdf.worker.min.mjs');
 await copyFile('media/webview.css', 'dist/webview.css');
 await copyFile('media/notify.css', 'dist/notify.css');
 await mkdir('dist/cli', { recursive: true });

@@ -5,8 +5,8 @@ The release workflow (`.github/workflows/release.yml`) builds `0.1.<run number>`
 ## Visual Studio Marketplace
 
 - Publisher `hmcts` at <https://marketplace.visualstudio.com/manage>, with the owners listed.
-- Trusted publisher registered on the extension `hmcts.hmcts-template-preview`: repository `hmcts/dtsse-docmosis-tools`, workflow `publish.yml`, no environment.
-- The repository name in the registration must be exactly `hmcts/dtsse-docmosis-tools`. A re-run for a tag that is already published is skipped as a duplicate.
+- Trusted publisher registered on the extension `hmcts.hmcts-template-preview`: repository `hmcts/dtsse-ide-tooling`, workflow `publish.yml`, no environment.
+- The repository name in the registration must be exactly `hmcts/dtsse-ide-tooling`. A re-run for a tag that is already published is skipped as a duplicate.
 - Unverified publisher: users see a one-time 'trust this publisher' prompt on first install.
 
 ## Open VSX (optional)

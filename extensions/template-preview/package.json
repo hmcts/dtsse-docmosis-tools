@@ -13,12 +13,12 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/hmcts/dtsse-docmosis-tools.git",
-    "directory": "vscode"
+    "url": "https://github.com/hmcts/dtsse-ide-tooling.git",
+    "directory": "extensions/template-preview"
   },
-  "homepage": "https://github.com/hmcts/dtsse-docmosis-tools/tree/master/vscode#readme",
+  "homepage": "https://github.com/hmcts/dtsse-ide-tooling/tree/master/extensions/template-preview#readme",
   "bugs": {
-    "url": "https://github.com/hmcts/dtsse-docmosis-tools/issues"
+    "url": "https://github.com/hmcts/dtsse-ide-tooling/issues"
   },
   "categories": [
     "Other"
@@ -313,6 +313,6 @@
     "vitest": "^5.0.0"
   },
   "dependencies": {
-    "@hmcts-cft/docmosis-tools": "file:.."
+    "@hmcts-cft/docmosis-tools": "*"
   }
 }
