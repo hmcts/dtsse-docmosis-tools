@@ -1,5 +1,10 @@
 export const LIBRARIES_SETTING = 'templateLibraries';
 
+/** The setting's default; package.json declares the same value. */
+export const DEFAULT_LIBRARIES: readonly Readonly<{ repo: string; path: string }>[] = Object.freeze([
+  Object.freeze({ repo: 'hmcts/rdo-docmosis', path: 'Templates' }),
+]);
+
 export interface LibraryConfig {
   /** Identifies the library across reloads: repo, ref and path together. */
   id: string;

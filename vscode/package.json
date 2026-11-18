@@ -52,8 +52,13 @@
         },
         "hmctsTemplatePreview.templateLibraries": {
           "type": "array",
-          "default": [],
-          "markdownDescription": "GitHub repositories whose `.docx` templates the **Templates** view lists. The repositories don't need to be cloned: the view reads the file list from GitHub and downloads a template when you open it.",
+          "default": [
+            {
+              "repo": "hmcts/rdo-docmosis",
+              "path": "Templates"
+            }
+          ],
+          "markdownDescription": "GitHub repositories whose `.docx` templates the **Templates** view lists. Defaults to the `Templates` folder of `hmcts/rdo-docmosis`. Setting this replaces the default: to keep it alongside other repositories, include it in the list. Set it to `[]` to list none. The repositories don't need to be cloned: the view reads the file list from GitHub and downloads a template when you open it.",
           "items": {
             "type": "object",
             "required": [
@@ -183,7 +188,7 @@
       {
         "view": "hmctsTemplatePreview.templates",
         "when": "hmctsTemplatePreview.templates.state == noLibraries",
-        "contents": "No template libraries are configured. Add the GitHub repositories that hold your templates to `hmctsTemplatePreview.templateLibraries`.\n[Configure template libraries](command:hmctsTemplatePreview.configureTemplateLibraries)"
+        "contents": "No template libraries are configured: `hmctsTemplatePreview.templateLibraries` is empty. Reset the setting to list hmcts/rdo-docmosis again, or add the GitHub repositories that hold your templates.\n[Configure template libraries](command:hmctsTemplatePreview.configureTemplateLibraries)"
       },
       {
         "view": "hmctsTemplatePreview.templates",

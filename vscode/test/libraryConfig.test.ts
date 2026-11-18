@@ -1,8 +1,24 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { normalisePath, parseLibraries } from '../src/library/config';
+import { DEFAULT_LIBRARIES, LIBRARIES_SETTING, normalisePath, parseLibraries } from '../src/library/config';
+import { SETTING_SECTION } from '../src/terminalCommand';
 
 describe('template library settings', () => {
-  it('defaults to no libraries', () => {
+  it('declares the same default in package.json as the code falls back to', () => {
+    const manifest = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
+    const setting = manifest.contributes.configuration.properties[`${SETTING_SECTION}.${LIBRARIES_SETTING}`];
+    expect(setting.default).toEqual(DEFAULT_LIBRARIES);
+  });
+
+  it('defaults to the Templates folder of hmcts/rdo-docmosis', () => {
+    expect(parseLibraries(DEFAULT_LIBRARIES)).toEqual({
+      libraries: [{ id: 'hmcts/rdo-docmosis@:Templates', owner: 'hmcts', repo: 'rdo-docmosis', ref: undefined, path: 'Templates', label: 'hmcts/rdo-docmosis/Templates' }],
+      errors: [],
+      warnings: [],
+    });
+  });
+
+  it('reads a missing or empty value as no libraries', () => {
     expect(parseLibraries(undefined)).toEqual({ libraries: [], errors: [], warnings: [] });
     expect(parseLibraries([])).toEqual({ libraries: [], errors: [], warnings: [] });
   });
