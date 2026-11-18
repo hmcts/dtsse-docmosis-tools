@@ -4,6 +4,7 @@ Tools for reading, editing, checking and rendering Docmosis `.docx` template fil
 
 - `bin/docmosis.mjs`: a CLI that lists a template's fields and blocks, finds broken conditionals and repeats, unpacks a template to XML and packs it back, diffs two versions, and renders a template file on the hosted dtsse-doc-render.
 - `lib/docx.mjs` and `lib/render.mjs`: the template and render libraries the CLI uses, importable as ES modules from `@hmcts-cft/docmosis-tools`.
+- `lib/notify.mjs`, `lib/notify-products.mjs` and `lib/notify-node.mjs`: GOV.UK Notify template support (see [Notify](#notify)), used by the extension's Notify editor.
 - `vscode/`: HMCTS Template Preview, a VS Code extension that builds an input form from a template and renders it beside the form through the hosted dtsse-doc-render. See [vscode/README.md](vscode/README.md).
 
 ## Install
@@ -136,6 +137,35 @@ type InferResult = { root: ObjectSchema; warnings: string[]; refs: InstructionRe
   },
   "warnings": []
 }
+```
+
+## Notify
+
+Three exports hold the GOV.UK Notify template support behind the extension's Notify editor. The CLI doesn't use them, and `@hmcts-cft/docmosis-tools` itself doesn't re-export them.
+
+`@hmcts-cft/docmosis-tools/notify` is pure, with no Node built-ins, so a browser bundle can import it:
+
+- `findPlaceholders(...texts)` finds the `((name))` and `((name??text))` placeholders, matching names as Notify does (ignoring case, spaces, underscores and hyphens; `placeholderKey`). `personalisationSchema(placeholders)` returns an `ObjectSchema` in the [Schema JSON](#schema-json) shape: a `string` per placeholder and a `boolean` per conditional. `lookup`, `dataKey`, `isYes`, `formValues` and `apiPersonalisation` read data the way Notify does; `apiPersonalisation` sends each empty placeholder as `((name))`, because Notify refuses a preview with one missing.
+- `renderLocal(type, subject, body, data)` is an approximate preview: email and letter bodies as HTML from Notify's markdown (`notifyMarkdown`), text messages as text with `smsCount`'s characters, fragments and whether the message is Unicode. Notify's own preview is authoritative.
+- The API's types (`NotifyTemplate`, `NotifyPreview`, `TemplateType`, `Personalisation`) and `templateAdminUrl(serviceId, templateId)`, the template's page in the Notify web app.
+
+`@hmcts-cft/docmosis-tools/notify/products` is pure too, and kept apart so a bundle that only previews templates doesn't carry the vault and secret names:
+
+- `BUILT_IN_PRODUCTS`: each product's Notify API key as the service mounts it from its AAT Key Vault (`{ id, label, vault, secret, note? }`, type `NotifyProduct`). `mergeProducts(entries)` adds entries or replaces built-in ones by `id`, sorted by label, and drops any whose `id`, `vault` or `secret` isn't letters, digits and hyphens (`SAFE_NAME`).
+
+`@hmcts-cft/docmosis-tools/notify/node` needs Node:
+
+- `new NotifyClient(apiKey, { baseUrl, fetchImpl })` lists (`listTemplates(type?)`), reads (`getTemplate(id)`) and previews (`previewTemplate(id, personalisation, signal?)`) templates, and can't change them. It signs each request with the key (`parseApiKey`, `signToken`). It uses `baseUrl` when given, else the public API. A refusal throws `NotifyApiError` with `status` and Notify's `errors`.
+- `readSecret(vault, secret)` reads a key with `az keyvault secret show` under the user's own `az login`, without a shell, and throws `KeyVaultError` with a message to show a person (not signed in, no access, no such secret, `az` missing). `KeyStore` keeps the keys read in memory for the session and drops a failed read.
+
+```js
+import { findPlaceholders, apiPersonalisation } from '@hmcts-cft/docmosis-tools/notify';
+import { KeyStore, NotifyClient } from '@hmcts-cft/docmosis-tools/notify/node';
+
+const client = new NotifyClient(await new KeyStore().get('pcs-aat', 'gov-notify-key'));
+const template = await client.getTemplate(templateId);
+const { personalisation, missing } = apiPersonalisation(findPlaceholders(template.subject, template.body), data);
+const preview = await client.previewTemplate(template.id, personalisation);
 ```
 
 ## Tests

@@ -1,5 +1,8 @@
 import type { TreeNode } from './docx.js';
 
+export type Json = string | number | boolean | null | Json[] | { [key: string]: Json };
+export type JsonObject = { [key: string]: Json };
+
 /** The parts of an instructionTree node that inference reads. */
 export interface InstructionNode extends Pick<TreeNode, 'type' | 'text' | 'dataRefs' | 'row'> {
     children: InstructionNode[];

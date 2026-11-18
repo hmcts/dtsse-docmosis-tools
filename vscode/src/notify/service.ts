@@ -1,6 +1,16 @@
-import { NotifyClient, type NotifyTemplate } from './client';
-import { KeyStore } from './keyVault';
-import { configuredProducts, type NotifyProduct } from './products';
+import type { NotifyTemplate } from '@hmcts-cft/docmosis-tools/notify';
+import { mergeProducts, type NotifyProduct } from '@hmcts-cft/docmosis-tools/notify/products';
+import { KeyStore, NotifyClient } from '@hmcts-cft/docmosis-tools/notify/node';
+import * as vscode from 'vscode';
+
+/** Points the extension at another Notify API, such as a local stand-in. */
+export const NOTIFY_URL_ENV = 'HMCTS_TEMPLATE_PREVIEW_NOTIFY_URL';
+
+export const notifyApiOverride = (): string | undefined => process.env[NOTIFY_URL_ENV]?.trim() || undefined;
+
+/** The built-in products with the `hmctsTemplatePreview.notify.products` setting's entries merged in. */
+export const configuredProducts = (): NotifyProduct[] =>
+  mergeProducts(vscode.workspace.getConfiguration('hmctsTemplatePreview').get<unknown>('notify.products', []));
 
 const listId = (product: NotifyProduct) => `${product.vault}/${product.secret}`;
 
@@ -14,7 +24,7 @@ export class NotifyService {
 
   constructor(
     readonly keys = new KeyStore(),
-    private readonly createClient: (key: string) => NotifyClient = (key) => new NotifyClient(key),
+    private readonly createClient: (key: string) => NotifyClient = (key) => new NotifyClient(key, { baseUrl: notifyApiOverride() }),
   ) {}
 
   products(): NotifyProduct[] {

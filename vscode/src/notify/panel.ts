@@ -1,14 +1,13 @@
 import * as fsp from 'node:fs/promises';
 import * as path from 'node:path';
+import { apiPersonalisation, findPlaceholders, templateAdminUrl, type NotifyPreview, type NotifyTemplate } from '@hmcts-cft/docmosis-tools/notify';
+import type { NotifyProduct } from '@hmcts-cft/docmosis-tools/notify/products';
 import * as vscode from 'vscode';
 import { isObject, type JsonObject } from '../data';
 import { errorMessage } from '../errorMessage';
 import { LatestRenderer } from '../render';
 import { webviewHtml } from '../webviewHtml';
-import { templateAdminUrl, type NotifyPreview, type NotifyTemplate } from './client';
 import type { Draft, EditorTemplate, EditorToHost, HostToEditor } from './messages';
-import { apiPersonalisation, findPlaceholders } from './placeholders';
-import type { NotifyProduct } from './products';
 import type { NotifyService } from './service';
 import { NotifyStorage } from './storage';
 

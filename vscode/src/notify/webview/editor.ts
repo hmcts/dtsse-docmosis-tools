@@ -1,9 +1,8 @@
+import { dataKey, findPlaceholders, formValues, notifyMarkdown, personalisationSchema, renderLocal, smsCount } from '@hmcts-cft/docmosis-tools/notify';
 import { mergeData, setAt, type Json, type JsonObject, type PathSegment } from '../../data';
 import { el } from '../../webview/dom';
 import { renderForm } from '../../webview/form';
-import { renderLocal, smsCount, notifyMarkdown } from '../localRender';
 import type { EditorTemplate, EditorToHost, HostToEditor, PreviewContent } from '../messages';
-import { dataKey, findPlaceholders, formValues, personalisationSchema } from '../placeholders';
 
 declare function acquireVsCodeApi(): { postMessage(message: EditorToHost): void };
 const vscode = acquireVsCodeApi();

@@ -1,5 +1,6 @@
-export type Json = string | number | boolean | null | Json[] | { [key: string]: Json };
-export type JsonObject = { [key: string]: Json };
+import type { Json, JsonObject } from '@hmcts-cft/docmosis-tools/schema';
+
+export type { Json, JsonObject };
 
 export const isObject = (v: unknown): v is JsonObject => typeof v === 'object' && v !== null && !Array.isArray(v);
 
