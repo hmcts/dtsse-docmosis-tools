@@ -2,7 +2,7 @@
   "name": "dtsse-ide-tooling",
   "private": true,
   "license": "MIT",
-  "description": "HMCTS DTSSE tooling for template authors: the docmosis CLI and library, and the HMCTS Template Preview VS Code extension",
+  "description": "HMCTS DTSSE tooling for template authors: the docmosis CLI and library, the HMCTS Template Preview and GOV.UK Notify Templates VS Code extensions, and the Notify library",
   "workspaces": [
     "packages/*",
     "extensions/*"
@@ -13,6 +13,6 @@
   "scripts": {
     "test": "npm test --workspaces --if-present",
     "build": "npm run build --workspaces --if-present",
-    "package": "npm run package --workspace extensions/template-preview"
+    "package": "npm run package --workspaces --if-present"
   }
 }

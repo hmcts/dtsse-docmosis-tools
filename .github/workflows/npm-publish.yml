@@ -9,6 +9,8 @@ on:
       - packages/docmosis-tools/index.mjs
       - packages/docmosis-tools/index.d.ts
       - packages/docmosis-tools/package.json
+      - packages/notify-tools/lib/**
+      - packages/notify-tools/package.json
 
 # Overlapping publishes would race on the version number, so a release in progress is never cancelled.
 concurrency:
@@ -16,14 +18,53 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  release:
+  changes:
     runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.detect.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      # A package is published when its own files change. A push whose base commit is unknown
+      # publishes both.
+      - name: Find the packages to publish
+        id: detect
+        env:
+          BEFORE: ${{ github.event.before }}
+        run: |
+          touched() {
+            [ "$all" = true ] || ! git diff --quiet "$BEFORE" "$GITHUB_SHA" -- "$@"
+          }
+          all=false
+          if ! git cat-file -e "${BEFORE}^{commit}" 2>/dev/null; then all=true; fi
+          matrix=()
+          if touched packages/docmosis-tools/bin packages/docmosis-tools/lib packages/docmosis-tools/index.mjs packages/docmosis-tools/index.d.ts packages/docmosis-tools/package.json; then
+            matrix+=('{"directory":"packages/docmosis-tools","tag_prefix":"npm-v"}')
+          fi
+          if touched packages/notify-tools/lib packages/notify-tools/package.json; then
+            matrix+=('{"directory":"packages/notify-tools","tag_prefix":"notify-tools-v"}')
+          fi
+          json="[$(IFS=,; echo "${matrix[*]}")]"
+          echo "publishing: ${json}"
+          echo "matrix=${json}" >> "$GITHUB_OUTPUT"
+
+  release:
+    needs: changes
+    if: needs.changes.outputs.matrix != '[]'
+    runs-on: ubuntu-latest
+    # The packages push their bump commits to the same branch, one after the other.
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        include: ${{ fromJSON(needs.changes.outputs.matrix) }}
     # No id-token: Azure Artifacts does not support npm provenance.
     permissions:
       contents: write
     defaults:
       run:
-        working-directory: packages/docmosis-tools
+        working-directory: ${{ matrix.directory }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -41,17 +82,19 @@ jobs:
         run: npm pack --dry-run
 
       # A version set by hand on master is published as it stands; anything else gets a patch
-      # bump. The npm-v<version> tag marks a version as released, and the loop steps past every
-      # tagged version. The extension's vscode-v tags are a separate series.
+      # bump. Each package has its own tag series, <prefix><version>, which marks a version as released;
+      # the loop steps past every tagged version. The extensions' vscode-v tags are separate.
       - name: Resolve the version to publish
         id: bump
+        env:
+          TAG_PREFIX: ${{ matrix.tag_prefix }}
         run: |
           current="$(node -p 'require("./package.json").version')"
-          while git rev-parse -q --verify "refs/tags/npm-v${current}" >/dev/null; do
+          while git rev-parse -q --verify "refs/tags/${TAG_PREFIX}${current}" >/dev/null; do
             npm version patch --no-git-tag-version --no-workspaces-update
             current="$(node -p 'require("./package.json").version')"
           done
-          echo "publishing npm-v${current}"
+          echo "publishing ${TAG_PREFIX}${current}"
           echo "version=${current}" >> "$GITHUB_OUTPUT"
 
       - name: Configure npm authentication for Azure Artifacts
@@ -87,18 +130,19 @@ jobs:
       - name: Commit the bump and tag the release
         env:
           VERSION: ${{ steps.bump.outputs.version }}
+          TAG_PREFIX: ${{ matrix.tag_prefix }}
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add package.json
-          UNRECORDED="published npm-v${VERSION} but could not record the bump on ${GITHUB_REF_NAME}. Set version to ${VERSION} in package.json by hand, or the next release will retry a version the feed already has."
+          UNRECORDED="published ${TAG_PREFIX}${VERSION} but could not record the bump on ${GITHUB_REF_NAME}. Set version to ${VERSION} in package.json by hand, or the next release will retry a version the feed already has."
           # A version master already records needs no commit, and `git commit` on a clean tree
           # exits non-zero.
           if git diff --cached --quiet; then
               published="$(git rev-parse HEAD)"
           else
               # This cannot loop: pushes made with GITHUB_TOKEN do not trigger workflows.
-              git commit -m "chore: release npm-v${VERSION} [skip ci]"
+              git commit -m "chore: release ${TAG_PREFIX}${VERSION} [skip ci]"
               # The commit that was gated and packed, pinned before the loop below can rebase it
               # onto a merge that landed meanwhile, so the tag points at what the feed has.
               published="$(git rev-parse HEAD)"
@@ -123,7 +167,7 @@ jobs:
               done
           fi
           # Fatal, because the next run reads the tag to know this version is taken.
-          git push origin "${published}:refs/tags/npm-v${VERSION}" || {
-              echo "::error::published npm-v${VERSION} but could not tag it. Run: git push origin ${published}:refs/tags/npm-v${VERSION}" >&2
+          git push origin "${published}:refs/tags/${TAG_PREFIX}${VERSION}" || {
+              echo "::error::published ${TAG_PREFIX}${VERSION} but could not tag it. Run: git push origin ${published}:refs/tags/${TAG_PREFIX}${VERSION}" >&2
               exit 1
           }

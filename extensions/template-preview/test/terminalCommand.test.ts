@@ -16,6 +16,7 @@ function activated(extensionPath = '/ext/hmcts') {
     extensionPath,
     extensionUri: { fsPath: extensionPath },
     globalStorageUri: { fsPath: storage },
+    globalState: { get: () => undefined },
     environmentVariableCollection: env,
     subscriptions: [] as unknown[],
   };

@@ -1,0 +1,42 @@
+{
+  "name": "@hmcts-cft/notify-tools",
+  "version": "0.1.0",
+  "description": "Read and preview GOV.UK Notify templates: placeholders, an approximate local preview, and a read-only API client",
+  "license": "MIT",
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+ssh://git@github.com/hmcts/dtsse-ide-tooling.git",
+    "directory": "packages/notify-tools"
+  },
+  "main": "./lib/notify.mjs",
+  "types": "./lib/notify.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/notify.d.ts",
+      "default": "./lib/notify.mjs"
+    },
+    "./node": {
+      "types": "./lib/node.d.ts",
+      "default": "./lib/node.mjs"
+    },
+    "./products": {
+      "types": "./lib/products.d.ts",
+      "default": "./lib/products.mjs"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib/*.mjs",
+    "lib/*.d.ts"
+  ],
+  "engines": {
+    "node": ">=24"
+  },
+  "publishConfig": {
+    "registry": "https://pkgs.dev.azure.com/hmcts/Artifacts/_packaging/hmcts-lib/npm/registry/"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.mjs"
+  }
+}

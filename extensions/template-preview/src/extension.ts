@@ -1,8 +1,6 @@
 import * as vscode from 'vscode';
+import { noticeNotifyMoved } from './notifyMoved';
 import { watchTerminalCommand } from './terminalCommand';
-import { DIFF_SCHEME, NotifyPanels } from './notify/panel';
-import { NotifyService } from './notify/service';
-import { NotifySidebar, PICKER_VIEW_ID } from './notify/sidebar';
 import { PreviewProvider, VIEW_TYPE } from './previewProvider';
 import { TemplateLibraryView } from './library/view';
 
@@ -25,27 +23,7 @@ export function activate(context: vscode.ExtensionContext): void {
       await vscode.commands.executeCommand('vscode.openWith', uri, VIEW_TYPE);
     }),
   );
-  activateNotify(context, output);
-}
-
-function activateNotify(context: vscode.ExtensionContext, output: vscode.OutputChannel): void {
-  const service = new NotifyService();
-  const panels = new NotifyPanels(context, output, service);
-  const sidebar = new NotifySidebar(context, output, service, panels);
-  context.subscriptions.push(
-    panels,
-    sidebar,
-    vscode.workspace.registerTextDocumentContentProvider(DIFF_SCHEME, panels.documents),
-    vscode.window.registerWebviewViewProvider(PICKER_VIEW_ID, sidebar, { webviewOptions: { retainContextWhenHidden: true } }),
-    vscode.commands.registerCommand('hmctsTemplatePreview.notify.refresh', () => sidebar.refresh()),
-    vscode.commands.registerCommand('hmctsTemplatePreview.notify.forgetKey', () => {
-      sidebar.forgetKey();
-      void vscode.window.showInformationMessage('HMCTS Template Preview: forgot the GOV.UK Notify API keys.');
-    }),
-    vscode.commands.registerCommand('hmctsTemplatePreview.notify.openTemplate', (product: string, template: string) =>
-      sidebar.openTemplate(product, template),
-    ),
-  );
+  noticeNotifyMoved(context);
 }
 
 export function deactivate(): void {}

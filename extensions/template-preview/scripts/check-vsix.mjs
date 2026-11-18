@@ -26,13 +26,9 @@ const required = [
   'extension/dist/webview.js',
   'extension/dist/webview.css',
   'extension/dist/pdf.worker.min.mjs',
-  'extension/dist/notify-picker.js',
-  'extension/dist/notify-editor.js',
-  'extension/dist/notify.css',
   'extension/dist/cli/docmosis-cli.mjs',
   'extension/dist/cli/docmosis.cmd',
   'extension/media/icon.png',
-  'extension/media/notify.svg',
   'extension/media/templates.svg',
 ];
 const absent = required.filter((name) => !modes.has(name));
