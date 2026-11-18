@@ -8,6 +8,9 @@ export class Uri {
   static file(fsPath: string): Uri {
     return new Uri(fsPath);
   }
+  static parse(value: string): Uri {
+    return new Uri(value);
+  }
   static joinPath(base: Uri, ...parts: string[]): Uri {
     return new Uri(path.join(base.fsPath, ...parts));
   }
@@ -22,12 +25,62 @@ export class RelativePattern {
 
 const disposable = { dispose: () => undefined };
 
+export class EventEmitter<T> {
+  private listeners: Listener<T>[] = [];
+  readonly event = (listener: Listener<T>) => {
+    this.listeners.push(listener);
+    return disposable;
+  };
+  fire(value: T): void {
+    this.listeners.forEach((listener) => listener(value));
+  }
+  dispose(): void {
+    this.listeners = [];
+  }
+}
+
+export enum TreeItemCollapsibleState {
+  None = 0,
+  Collapsed = 1,
+  Expanded = 2,
+}
+
+export class ThemeIcon {
+  static readonly File = new ThemeIcon('file');
+  static readonly Folder = new ThemeIcon('folder');
+  constructor(readonly id: string) {}
+}
+
+export class TreeItem {
+  id?: string;
+  description?: string;
+  tooltip?: string;
+  iconPath?: unknown;
+  resourceUri?: Uri;
+  contextValue?: string;
+  command?: { command: string; title: string; arguments?: unknown[] };
+  constructor(
+    readonly label: string,
+    readonly collapsibleState: TreeItemCollapsibleState = TreeItemCollapsibleState.None,
+  ) {}
+}
+
+export enum ProgressLocation {
+  Notification = 15,
+}
+
 export const stub = {
   settings: {} as Record<string, unknown>,
   workspaceRoot: '/',
   errors: [] as string[],
   configListeners: [] as Array<(event: { affectsConfiguration(section: string): boolean }) => unknown>,
   openDialog: (): Promise<Uri[] | undefined> => Promise.resolve(undefined),
+  infos: [] as string[],
+  executed: [] as unknown[][],
+  commands: new Map<string, (...args: unknown[]) => unknown>(),
+  githubSession: undefined as string | undefined,
+  signInSession: undefined as string | undefined,
+  treeView: undefined as { message?: string; visible: boolean } | undefined,
 };
 
 export const workspace = {
@@ -48,14 +101,41 @@ export const window = {
     stub.errors.push(message);
     return Promise.resolve(undefined);
   },
+  showInformationMessage: (message: string) => {
+    stub.infos.push(message);
+    return Promise.resolve(undefined);
+  },
   showOpenDialog: () => stub.openDialog(),
+  withProgress: <T>(_options: unknown, task: () => Promise<T>) => task(),
+  createTreeView: () => {
+    stub.treeView = { ...disposable, visible: true, message: undefined, onDidChangeVisibility: () => disposable } as never;
+    return stub.treeView;
+  },
   createOutputChannel: () => ({ ...disposable, appendLine: () => undefined }),
   registerCustomEditorProvider: () => disposable,
 };
 
 export const commands = {
-  executeCommand: () => Promise.resolve(undefined),
-  registerCommand: () => disposable,
+  executeCommand: (...args: unknown[]) => {
+    stub.executed.push(args);
+    return Promise.resolve(undefined);
+  },
+  registerCommand: (id: string, handler: (...args: unknown[]) => unknown) => {
+    stub.commands.set(id, handler);
+    return disposable;
+  },
+};
+
+export const authentication = {
+  getSession: (_provider: string, _scopes: string[], options?: { createIfNone?: boolean }) => {
+    const token = options?.createIfNone ? stub.signInSession : stub.githubSession;
+    return token ? Promise.resolve({ accessToken: token }) : Promise.reject(new Error('no session'));
+  },
+  onDidChangeSessions: () => disposable,
+};
+
+export const env = {
+  openExternal: () => Promise.resolve(true),
 };
 
 /** An environment variable collection that records what the extension asked for. */

@@ -28,7 +28,9 @@ export async function run(): Promise<void> {
   const extension = vscode.extensions.getExtension('hmcts.hmcts-template-preview');
   assert.ok(extension, 'extension is installed in the test host');
   await extension.activate();
-  assert.ok((await vscode.commands.getCommands(true)).includes('hmctsTemplatePreview.preview'));
+  const commands = await vscode.commands.getCommands(true);
+  assert.ok(commands.includes('hmctsTemplatePreview.preview'));
+  assert.ok(commands.includes('hmctsTemplatePreview.searchTemplates'), 'the Templates view registers its commands');
 
   if (process.platform !== 'win32') {
     // A terminal opened after activation finds the stub in the extension's stable storage directory,
