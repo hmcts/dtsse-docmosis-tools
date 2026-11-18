@@ -17,8 +17,7 @@ on:
       - package-lock.json
 
 permissions:
-  contents: write
-  actions: write
+  contents: read
 
 concurrency:
   group: release
@@ -58,6 +57,9 @@ jobs:
 
   release:
     needs: changes
+    permissions:
+      contents: write
+      actions: write
     if: needs.changes.outputs.matrix != '[]'
     runs-on: ubuntu-latest
     strategy:
