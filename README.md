@@ -8,6 +8,7 @@ Tooling for HMCTS template authors, as an npm workspaces monorepo.
 | [`packages/notify-tools`](packages/notify-tools) | `@hmcts-cft/notify-tools`: GOV.UK Notify template support: placeholders, an approximate local preview and a read-only API client. Published to the `hmcts-lib` feed. |
 | [`extensions/template-preview`](extensions/template-preview) | HMCTS Template Preview, a VS Code extension that previews Docmosis templates. Published to the Marketplace. |
 | [`extensions/notify`](extensions/notify) | GOV.UK Notify Templates, a VS Code extension that browses, previews and drafts changes to GOV.UK Notify templates. Published to the Marketplace. |
+| [`extensions/jenkins`](extensions/jenkins) | HMCTS Jenkins, a VS Code extension that watches HMCTS CFT Jenkins pipelines by team, alerts when your pull request builds finish and investigates failures with Claude. Published to the Marketplace. |
 
 ## Build and test
 
@@ -16,7 +17,7 @@ Node 24 or later.
 ```sh
 npm ci
 npm test                                               # library and extension tests
-npm run build                                          # typecheck and bundle both extensions
+npm run build                                          # typecheck and bundle the extensions
 npm run package                                        # a .vsix in each extension directory
 ```
 
