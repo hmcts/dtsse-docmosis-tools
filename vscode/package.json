@@ -49,6 +49,37 @@
           "type": "boolean",
           "default": true,
           "markdownDescription": "Add the `docmosis` command to the PATH of integrated terminals. Applies to terminals opened after the change."
+        },
+        "hmctsTemplatePreview.templateLibraries": {
+          "type": "array",
+          "default": [],
+          "markdownDescription": "GitHub repositories whose `.docx` templates the **Templates** view lists. The repositories don't need to be cloned: the view reads the file list from GitHub and downloads a template when you open it.",
+          "items": {
+            "type": "object",
+            "required": [
+              "repo"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "repo": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9-]+/[A-Za-z0-9._-]+$",
+                "markdownDescription": "The repository, as `owner/name`."
+              },
+              "ref": {
+                "type": "string",
+                "markdownDescription": "Branch, tag or commit to list. Defaults to the repository's default branch."
+              },
+              "path": {
+                "type": "string",
+                "markdownDescription": "Folder in the repository to list, for example `templates/letters`. Defaults to the whole repository."
+              },
+              "label": {
+                "type": "string",
+                "markdownDescription": "Name shown for the library when several are configured."
+              }
+            }
+          }
         }
       }
     },
@@ -69,6 +100,33 @@
         "command": "hmctsTemplatePreview.preview",
         "title": "Preview Docmosis template",
         "category": "HMCTS Template Preview"
+      },
+      {
+        "command": "hmctsTemplatePreview.searchTemplates",
+        "title": "Search templates",
+        "category": "HMCTS Template Preview",
+        "icon": "$(search)"
+      },
+      {
+        "command": "hmctsTemplatePreview.refreshTemplates",
+        "title": "Refresh templates",
+        "category": "HMCTS Template Preview",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "hmctsTemplatePreview.signInToGitHub",
+        "title": "Sign in to GitHub for templates",
+        "category": "HMCTS Template Preview"
+      },
+      {
+        "command": "hmctsTemplatePreview.configureTemplateLibraries",
+        "title": "Configure template libraries",
+        "category": "HMCTS Template Preview"
+      },
+      {
+        "command": "hmctsTemplatePreview.openLibraryTemplate",
+        "title": "Preview library template",
+        "category": "HMCTS Template Preview"
       }
     ],
     "menus": {
@@ -76,6 +134,10 @@
         {
           "command": "hmctsTemplatePreview.preview",
           "when": "resourceExtname == .docx || activeCustomEditorId == hmctsTemplatePreview.docxPreview"
+        },
+        {
+          "command": "hmctsTemplatePreview.openLibraryTemplate",
+          "when": "false"
         }
       ],
       "explorer/context": [
@@ -84,8 +146,66 @@
           "when": "resourceExtname == .docx",
           "group": "navigation@50"
         }
+      ],
+      "view/title": [
+        {
+          "command": "hmctsTemplatePreview.searchTemplates",
+          "when": "view == hmctsTemplatePreview.templates",
+          "group": "navigation@1"
+        },
+        {
+          "command": "hmctsTemplatePreview.refreshTemplates",
+          "when": "view == hmctsTemplatePreview.templates",
+          "group": "navigation@2"
+        }
       ]
-    }
+    },
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "hmctsTemplatePreview",
+          "title": "HMCTS Templates",
+          "icon": "media/templates.svg"
+        }
+      ]
+    },
+    "views": {
+      "hmctsTemplatePreview": [
+        {
+          "id": "hmctsTemplatePreview.templates",
+          "name": "Templates",
+          "icon": "media/templates.svg",
+          "contextualTitle": "HMCTS Templates"
+        }
+      ]
+    },
+    "viewsWelcome": [
+      {
+        "view": "hmctsTemplatePreview.templates",
+        "when": "hmctsTemplatePreview.templates.state == noLibraries",
+        "contents": "No template libraries are configured. Add the GitHub repositories that hold your templates to `hmctsTemplatePreview.templateLibraries`.\n[Configure template libraries](command:hmctsTemplatePreview.configureTemplateLibraries)"
+      },
+      {
+        "view": "hmctsTemplatePreview.templates",
+        "when": "hmctsTemplatePreview.templates.state == signedOut",
+        "contents": "Sign in to GitHub to list the templates in the configured repositories.\n[Sign in to GitHub](command:hmctsTemplatePreview.signInToGitHub)"
+      },
+      {
+        "view": "hmctsTemplatePreview.templates",
+        "when": "hmctsTemplatePreview.templates.state == loading",
+        "contents": "Loading the template list from GitHub..."
+      },
+      {
+        "view": "hmctsTemplatePreview.templates",
+        "when": "hmctsTemplatePreview.templates.state == empty",
+        "contents": "The configured libraries have no .docx templates.\n[Configure template libraries](command:hmctsTemplatePreview.configureTemplateLibraries)"
+      },
+      {
+        "view": "hmctsTemplatePreview.templates",
+        "when": "hmctsTemplatePreview.templates.state == error",
+        "contents": "Couldn't load the template list.\n[Retry](command:hmctsTemplatePreview.refreshTemplates)\n[Sign in to GitHub](command:hmctsTemplatePreview.signInToGitHub)\n[Configure template libraries](command:hmctsTemplatePreview.configureTemplateLibraries)"
+      }
+    ]
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

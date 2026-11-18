@@ -1,6 +1,6 @@
 // Fails unless dist/cli/docmosis is stored in the vsix with mode 0755, which the extension's
-// stub relies on to exec it. Reads the zip's central directory: the Unix mode is the high
-// half of each entry's external attributes.
+// stub relies on to exec it, and unless the Templates view's icon ships. Reads the zip's central
+// directory: the Unix mode is the high half of each entry's external attributes.
 import { readFileSync } from 'node:fs';
 
 const file = new URL('../hmcts-template-preview.vsix', import.meta.url);
@@ -28,3 +28,10 @@ if (mode !== 0o755) {
   process.exit(1);
 }
 console.log(`${file.pathname}: ${entry} is 755`);
+
+const icon = 'extension/media/templates.svg';
+if (!modes.has(icon)) {
+  console.error(`${file.pathname}: ${icon} is missing`);
+  process.exit(1);
+}
+console.log(`${file.pathname}: ${icon} is present`);
