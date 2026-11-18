@@ -1,1 +1,10 @@
-{"extends": ["local>hmcts/.github:renovate-config"]}
+{
+  "extends": ["local>hmcts/.github:renovate-config"],
+  "packageRules": [
+    {
+      "description": "@types/vscode must stay at or below engines.vscode in vscode/package.json, because vsce rejects types newer than the engine.",
+      "matchPackageNames": ["@types/vscode"],
+      "allowedVersions": "<1.91.0"
+    }
+  ]
+}
