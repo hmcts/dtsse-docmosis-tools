@@ -72,7 +72,7 @@ jobs:
 
       - uses: actions/setup-node@v7
         with:
-          node-version: 24
+          node-version: 26
 
       # CI runs on pull requests only, so a direct push to master is gated here.
       - name: Test
